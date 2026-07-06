@@ -1,4 +1,16 @@
 import "reflect-metadata";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+
+// Load env from the first .env we find (repo root when run from apps/api, or cwd).
+// In Docker the vars come from the environment, so a missing file is fine.
+for (const candidate of [resolve(process.cwd(), ".env"), resolve(process.cwd(), "../../.env")]) {
+  if (existsSync(candidate) && typeof process.loadEnvFile === "function") {
+    process.loadEnvFile(candidate);
+    break;
+  }
+}
+
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, Logger } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";

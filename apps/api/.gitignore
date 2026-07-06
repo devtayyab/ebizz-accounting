@@ -1,0 +1,5 @@
+# NestJS API (root .gitignore also covers these)
+node_modules/
+dist/
+*.tsbuildinfo
+.env

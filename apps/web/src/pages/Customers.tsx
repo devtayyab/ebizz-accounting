@@ -4,6 +4,8 @@ import type { Customer, Paginated } from "@ebizz/shared";
 import { api, ApiError } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
 import { Modal } from "../components/Modal";
+import { EmptyCell } from "../components/Empty";
+import { Pagination } from "../components/Pagination";
 
 type FormState = Partial<Customer> & { name: string };
 
@@ -12,10 +14,12 @@ export function CustomersPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Customer | null>(null);
   const [creating, setCreating] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["customers", activeCompanyId],
-    queryFn: () => api.get<Paginated<Customer>>("/customers?page=1&page_size=100"),
+    queryKey: ["customers", activeCompanyId, page, pageSize],
+    queryFn: () => api.get<Paginated<Customer>>(`/customers?page=${page}&page_size=${pageSize}`),
     enabled: !!activeCompanyId,
   });
 
@@ -72,15 +76,12 @@ export function CustomersPage() {
                 </tr>
               ))}
               {data?.data.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="muted">
-                    No customers yet.
-                  </td>
-                </tr>
+                <tr><td colSpan={6}><EmptyCell>No customers yet.</EmptyCell></td></tr>
               )}
             </tbody>
           </table>
         )}
+        <Pagination page={page} pageSize={pageSize} total={data?.total ?? 0} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} />
       </div>
 
       {(creating || editing) && (
@@ -128,6 +129,7 @@ function CustomerForm({
         currency: form.currency || undefined,
         payment_terms_days: form.payment_terms_days ?? 30,
         credit_limit: form.credit_limit || undefined,
+        address_line1: form.address_line1 || undefined,
         city: form.city || undefined,
         country: form.country || undefined,
         is_active: form.is_active ?? true,
@@ -174,6 +176,10 @@ function CustomerForm({
             onChange={(e) => set({ credit_limit: e.target.value })}
           />
         </div>
+      </div>
+      <div className="field">
+        <label>Address</label>
+        <input value={form.address_line1 ?? ""} onChange={(e) => set({ address_line1: e.target.value })} />
       </div>
       <div className="grid-2">
         <div className="field">

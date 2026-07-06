@@ -34,6 +34,45 @@ export class CatalogService {
     return (data ?? []) as Account[];
   }
 
+  async createAccount(dto: {
+    company_id: string;
+    code: string;
+    name: string;
+    type: string;
+    parent_id?: string;
+    currency?: string;
+  }): Promise<Account> {
+    const organization_id = await resolveOrganizationId(this.db, dto.company_id);
+    const { data, error } = await this.db
+      .from("accounts")
+      .insert({ ...dto, organization_id })
+      .select("*")
+      .single();
+    if (error) throw new BadRequestException(pgMessage(error));
+    return data as Account;
+  }
+
+  async updateAccount(id: string, dto: { code?: string; name?: string; type?: string; is_active?: boolean }): Promise<Account> {
+    const { data, error } = await this.db
+      .from("accounts")
+      .update(dto)
+      .eq("id", id)
+      .select("*")
+      .maybeSingle();
+    if (error) throw new BadRequestException(pgMessage(error));
+    if (!data) throw new NotFoundException(`Account ${id} not found`);
+    return data as Account;
+  }
+
+  async deleteAccount(id: string): Promise<void> {
+    const { error } = await this.db.from("accounts").delete().eq("id", id);
+    if (error) {
+      throw new BadRequestException(
+        "This account can't be deleted because it's used by transactions or items. Deactivate it instead.",
+      );
+    }
+  }
+
   async locations(companyId: string) {
     const { data, error } = await this.db
       .from("locations")
@@ -66,5 +105,15 @@ export class CatalogService {
     if (error) throw new BadRequestException(pgMessage(error));
     if (!data) throw new NotFoundException(`Location ${id} not found`);
     return data;
+  }
+
+  async deleteLocation(id: string): Promise<void> {
+    const { error } = await this.db.from("locations").delete().eq("id", id);
+    if (error) {
+      // FK violation → the warehouse still has stock or movements
+      throw new BadRequestException(
+        "This warehouse can't be deleted because it has stock or transactions. Deactivate it instead.",
+      );
+    }
   }
 }

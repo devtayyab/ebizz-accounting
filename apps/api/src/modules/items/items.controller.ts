@@ -17,9 +17,11 @@ import { CompanyId } from "../../common/company-id.decorator";
 import { PaginationQueryDto } from "../../common/pagination.dto";
 import { ItemsService } from "./items.service";
 import {
+  AdjustDto,
   CreateItemDto,
   LinkSupplierDto,
   MovementDto,
+  TransferDto,
   UpdateItemDto,
 } from "./dto";
 
@@ -85,5 +87,25 @@ export class ItemsController {
   @Post(":id/movements")
   recordMovement(@Param("id", ParseUUIDPipe) id: string, @Body() dto: MovementDto) {
     return this.items.recordMovement(id, dto);
+  }
+
+  @Get(":id/traceability")
+  traceability(@Param("id", ParseUUIDPipe) id: string) {
+    return this.items.traceability(id);
+  }
+
+  @Get(":id/history")
+  history(@Param("id", ParseUUIDPipe) id: string) {
+    return this.items.movements(id);
+  }
+
+  @Post(":id/transfer")
+  transfer(@Param("id", ParseUUIDPipe) id: string, @Body() dto: TransferDto) {
+    return this.items.transfer(id, dto);
+  }
+
+  @Post(":id/adjust")
+  adjust(@Param("id", ParseUUIDPipe) id: string, @Body() dto: AdjustDto) {
+    return this.items.adjust(id, dto);
   }
 }

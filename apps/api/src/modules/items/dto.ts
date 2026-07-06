@@ -47,10 +47,9 @@ export class CreateItemDto {
   @IsUUID()
   category_id?: string;
 
-  @ApiPropertyOptional({ description: "Decimal string" })
-  @IsOptional()
+  @ApiProperty({ description: "Decimal string — required for all items" })
   @IsNumberString()
-  purchase_price?: string;
+  purchase_price!: string;
 
   @ApiPropertyOptional({ description: "Decimal string" })
   @IsOptional()
@@ -162,4 +161,21 @@ export class MovementDto {
   @IsOptional()
   @IsBoolean()
   post_to_ledger?: boolean;
+}
+
+/** Move stock between two locations (no ledger impact). */
+export class TransferDto {
+  @ApiProperty() @IsUUID() from_location_id!: string;
+  @ApiProperty() @IsUUID() to_location_id!: string;
+  @ApiProperty({ description: "Positive quantity to move" }) @IsNumberString() quantity!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() reference?: string;
+}
+
+/** Adjust stock at a location (posts to Inventory Adjustments). */
+export class AdjustDto {
+  @ApiProperty() @IsUUID() location_id!: string;
+  @ApiProperty({ description: "Signed delta: + found, - write-off" }) @IsNumberString() quantity_delta!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() reason?: string;
+  @ApiPropertyOptional({ description: "Unit cost (defaults to current avg cost)" })
+  @IsOptional() @IsNumberString() unit_cost?: string;
 }

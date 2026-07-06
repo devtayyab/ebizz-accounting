@@ -23,7 +23,8 @@ function required(name: string): string {
 
 export function loadConfig(): AppConfig {
   return {
-    port: parseInt(process.env.API_PORT ?? "3000", 10),
+    // Cloud hosts (Render, Railway, Fly…) inject PORT; fall back to API_PORT locally.
+    port: parseInt(process.env.PORT ?? process.env.API_PORT ?? "3000", 10),
     globalPrefix: process.env.API_GLOBAL_PREFIX ?? "api/v1",
     corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
     supabase: {

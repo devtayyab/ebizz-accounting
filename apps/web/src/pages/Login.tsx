@@ -7,20 +7,28 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setInfo(null);
     setBusy(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: { data: { full_name: fullName } },
         });
         if (error) throw error;
+        // With email confirmation ON (production), signUp returns no session —
+        // the user must confirm their email first.
+        if (!data.session) {
+          setInfo("Account created. Check your email to confirm your address, then sign in.");
+          setMode("signin");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -65,6 +73,7 @@ export function Login() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
+          {info && <div style={{ color: "var(--success)", fontSize: 13, margin: "8px 0" }}>{info}</div>}
           {error && <div className="error">{error}</div>}
           <button className="primary" type="submit" disabled={busy} style={{ width: "100%" }}>
             {busy ? "…" : mode === "signin" ? "Sign in" : "Sign up"}

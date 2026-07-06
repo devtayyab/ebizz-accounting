@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -12,7 +14,7 @@ import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { AuthGuard } from "../../auth/auth.guard";
 import { CompanyId } from "../../common/company-id.decorator";
 import { CatalogService } from "./catalog.service";
-import { CreateLocationDto, UpdateLocationDto } from "./dto";
+import { CreateAccountDto, CreateLocationDto, UpdateAccountDto, UpdateLocationDto } from "./dto";
 
 @ApiTags("catalog")
 @ApiBearerAuth()
@@ -31,6 +33,22 @@ export class CatalogController {
     return this.catalog.accounts(companyId);
   }
 
+  @Post("accounts")
+  createAccount(@Body() dto: CreateAccountDto) {
+    return this.catalog.createAccount(dto);
+  }
+
+  @Patch("accounts/:id")
+  updateAccount(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateAccountDto) {
+    return this.catalog.updateAccount(id, dto);
+  }
+
+  @Delete("accounts/:id")
+  @HttpCode(204)
+  deleteAccount(@Param("id", ParseUUIDPipe) id: string) {
+    return this.catalog.deleteAccount(id);
+  }
+
   @Get("locations")
   locations(@CompanyId() companyId: string) {
     return this.catalog.locations(companyId);
@@ -47,5 +65,11 @@ export class CatalogController {
     @Body() dto: UpdateLocationDto,
   ) {
     return this.catalog.updateLocation(id, dto);
+  }
+
+  @Delete("locations/:id")
+  @HttpCode(204)
+  deleteLocation(@Param("id", ParseUUIDPipe) id: string) {
+    return this.catalog.deleteLocation(id);
   }
 }

@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Company } from "@ebizz/shared";
 import { api } from "../lib/api";
 import { useAuth } from "./AuthContext";
@@ -25,6 +25,7 @@ const STORAGE_KEY = "ebizz.companyId";
 
 export function CompanyProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
+  const qc = useQueryClient();
   const [activeCompanyId, setActive] = useState<string | null>(
     () => localStorage.getItem(STORAGE_KEY),
   );
@@ -37,16 +38,22 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
   const companies = data ?? [];
 
-  // Default the active company to the first available once loaded.
+  // Select the first company once loaded, and self-heal a stale/foreign id
+  // (e.g. a localStorage id left over from another account) so activeCompany
+  // is never null while companies exist.
   useEffect(() => {
-    if (!activeCompanyId && companies.length > 0) {
-      setActiveCompanyId(companies[0].id);
-    }
+    if (companies.length === 0) return;
+    const valid = activeCompanyId && companies.some((c) => c.id === activeCompanyId);
+    if (!valid) setActiveCompanyId(companies[0].id);
   }, [companies, activeCompanyId]);
 
   function setActiveCompanyId(id: string) {
+    if (id === activeCompanyId) return;
     localStorage.setItem(STORAGE_KEY, id);
     setActive(id);
+    // Drop all cached, company-scoped data so every screen refetches for the
+    // newly selected company (prevents showing the previous company's amounts).
+    qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "companies" });
   }
 
   const value = useMemo<CompanyState>(

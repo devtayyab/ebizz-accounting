@@ -16,9 +16,11 @@ import { REQUEST_SUPABASE } from "../../supabase/supabase.module";
 import { PaginationQueryDto, toRange } from "../../common/pagination.dto";
 import { pgMessage, resolveOrganizationId } from "../../common/company.util";
 import {
+  AdjustDto,
   CreateItemDto,
   LinkSupplierDto,
   MovementDto,
+  TransferDto,
   UpdateItemDto,
 } from "./dto";
 
@@ -84,7 +86,11 @@ export class ItemsService {
 
   async remove(id: string): Promise<void> {
     const { error } = await this.db.from("items").delete().eq("id", id);
-    if (error) throw new BadRequestException(pgMessage(error));
+    if (error) {
+      throw new BadRequestException(
+        "This item can't be deleted because it has stock movements or appears on documents. Mark it inactive instead (edit the item and untick Active).",
+      );
+    }
   }
 
   // --- sourcing: item <-> suppliers -----------------------------------------
@@ -143,6 +149,53 @@ export class ItemsService {
       p_supplier_id: dto.supplier_id ?? null,
       p_customer_id: dto.customer_id ?? null,
       p_post_to_ledger: dto.post_to_ledger ?? true,
+    });
+    if (error) throw new BadRequestException(pgMessage(error));
+    return data;
+  }
+
+  /** Per-party in/out summary: which suppliers stock came from, which customers bought it. */
+  async traceability(itemId: string) {
+    const item = await this.get(itemId);
+    const { data, error } = await this.db.rpc("report_item_traceability", {
+      p_company: item.company_id,
+      p_item: itemId,
+    });
+    if (error) throw new BadRequestException(pgMessage(error));
+    return data ?? [];
+  }
+
+  /** Recent raw movement history for an item. */
+  async movements(itemId: string) {
+    const { data, error } = await this.db
+      .from("inventory_movements")
+      .select("id, movement_type, quantity, unit_cost, reference, supplier_id, customer_id, created_at")
+      .eq("item_id", itemId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) throw new BadRequestException(pgMessage(error));
+    return data ?? [];
+  }
+
+  async transfer(itemId: string, dto: TransferDto) {
+    const { data, error } = await this.db.rpc("transfer_stock", {
+      p_item: itemId,
+      p_from: dto.from_location_id,
+      p_to: dto.to_location_id,
+      p_qty: Number(dto.quantity),
+      p_ref: dto.reference ?? null,
+    });
+    if (error) throw new BadRequestException(pgMessage(error));
+    return data;
+  }
+
+  async adjust(itemId: string, dto: AdjustDto) {
+    const { data, error } = await this.db.rpc("adjust_stock", {
+      p_item: itemId,
+      p_loc: dto.location_id,
+      p_qty_delta: Number(dto.quantity_delta),
+      p_reason: dto.reason ?? null,
+      p_unit_cost: dto.unit_cost ? Number(dto.unit_cost) : null,
     });
     if (error) throw new BadRequestException(pgMessage(error));
     return data;

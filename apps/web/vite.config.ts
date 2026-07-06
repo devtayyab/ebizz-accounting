@@ -4,6 +4,8 @@ import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
   plugins: [react()],
+  // Load env files (.env) from the monorepo root, not just apps/web.
+  envDir: fileURLToPath(new URL("../../", import.meta.url)),
   resolve: {
     alias: {
       "@ebizz/shared": fileURLToPath(

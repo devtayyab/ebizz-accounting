@@ -3,9 +3,10 @@
 A multi-tenant, multi-currency, double-entry accounting platform with inventory,
 supplier and customer management — built to scale as a SaaS product.
 
-> **Status:** Milestone 1 — foundation + inventory/items, suppliers and customers.
-> The double-entry general ledger and multi-tenant/multi-company core are in
-> place from day one; invoicing, bills, payments and reporting build on top next.
+> **Status:** Milestone 2 — full transaction layer on top of the double-entry core.
+> Sales invoices (A/R), purchase bills (A/P), payments, tax, and financial
+> reports (P&L, Balance Sheet, Trial Balance, A/R & A/P aging) — with inventory
+> automatically moved and the ledger posted on every document.
 
 ---
 
@@ -116,16 +117,39 @@ endpoints also require an `x-company-id` header.
 | `GET/POST` | `/items/:id/suppliers` | Item ↔ supplier sourcing |
 | `GET` | `/items/:id/levels` | Stock on hand per location |
 | `POST` | `/items/:id/movements` | Record stock movement (+ auto ledger post) |
+| `GET/POST` | `/tax-rates` | Tax rates |
+| `GET/POST/PATCH` `POST /:id/post` | `/invoices` | Sales invoices (draft → post) |
+| `GET/POST/PATCH` `POST /:id/post` | `/bills` | Purchase bills (draft → post) |
+| `GET/POST` | `/payments` | Customer/supplier payments + allocation |
+| `GET` | `/reports/trial-balance` | Trial balance |
+| `GET` | `/reports/profit-loss` | Profit & Loss |
+| `GET` | `/reports/balance-sheet` | Balance Sheet |
+| `GET` | `/reports/ar-aging`, `/reports/ap-aging` | Receivable / payable aging |
 
 Interactive docs: **`http://localhost:3000/docs`**.
 
+### How posting works
+
+Documents are created as **draft**, then **posted**. Posting is one atomic DB
+transaction (a `SECURITY DEFINER` RPC) that moves inventory *and* writes a
+balanced journal entry:
+
+- **Post a bill** → Dr Inventory (stocked lines, moving-average cost in) / Dr
+  Expense (service lines) + Dr Input Tax, Cr Accounts Payable.
+- **Post an invoice** → Dr Accounts Receivable, Cr Revenue + Cr Tax; and for
+  stocked lines Dr COGS / Cr Inventory (issued at moving-average cost).
+- **Payments** → customer: Dr Bank, Cr A/R; supplier: Dr A/P, Cr Bank; and
+  allocations mark invoices/bills paid.
+
+Posted documents are immutable; only drafts can be edited or deleted.
+
 ---
 
-## Roadmap (post-milestone-1)
+## Roadmap (post-milestone-2)
 
-1. Sales invoices & customer payments (A/R) → auto GL posting
-2. Purchase bills & supplier payments (A/P) → auto GL posting
-3. Tax handling, FX revaluation, financial reports (P&L, Balance Sheet, Trial Balance)
+1. Credit notes / refunds; void & reverse posted documents
+2. Purchase-order & sales-order layer, partial shipments/receipts
+3. FX revaluation, multi-currency gain/loss
 4. Roles/permissions UI, audit log, org member invitations
 5. Billing/subscription layer for SaaS
 

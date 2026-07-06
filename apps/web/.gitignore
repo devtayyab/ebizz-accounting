@@ -1,0 +1,7 @@
+# Vite web app (root .gitignore also covers these)
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+*.tsbuildinfo

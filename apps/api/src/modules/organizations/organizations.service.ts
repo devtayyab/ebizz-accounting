@@ -8,7 +8,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import type { Company, Organization } from "@ebizz/shared";
 import { REQUEST_SUPABASE } from "../../supabase/supabase.module";
 import { pgMessage } from "../../common/company.util";
-import { BootstrapOrgDto, CreateCompanyDto } from "./dto";
+import { BootstrapOrgDto, CreateCompanyDto, UpdateCompanyDto } from "./dto";
 
 @Injectable({ scope: Scope.REQUEST })
 export class OrganizationsService {
@@ -59,5 +59,37 @@ export class OrganizationsService {
     });
     if (seedError) throw new BadRequestException(pgMessage(seedError));
     return company;
+  }
+
+  async updateCompany(id: string, dto: UpdateCompanyDto): Promise<Company> {
+    // Changing the base (functional) currency is only safe before any ledger
+    // activity — otherwise stored base amounts (computed against the old base)
+    // become inconsistent. Block it once posted entries exist.
+    if (dto.base_currency) {
+      const { data: current } = await this.db
+        .from("companies").select("base_currency").eq("id", id).maybeSingle();
+      const changing = current && (current as { base_currency: string }).base_currency !== dto.base_currency;
+      if (changing) {
+        const { count, error: cErr } = await this.db
+          .from("journal_entries")
+          .select("id", { count: "exact", head: true })
+          .eq("company_id", id)
+          .eq("status", "posted");
+        if (cErr) throw new BadRequestException(pgMessage(cErr));
+        if ((count ?? 0) > 0) {
+          throw new BadRequestException(
+            "Base currency can't be changed once you have posted transactions — it would corrupt historical figures.",
+          );
+        }
+      }
+    }
+    const { data, error } = await this.db
+      .from("companies")
+      .update(dto)
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error) throw new BadRequestException(pgMessage(error));
+    return data as Company;
   }
 }

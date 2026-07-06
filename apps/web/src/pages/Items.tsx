@@ -11,6 +11,9 @@ import { ITEM_TYPES, INVENTORY_MOVEMENT_TYPES } from "@ebizz/shared";
 import { api, ApiError } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
 import { Modal } from "../components/Modal";
+import { money, stockStatus } from "../lib/format";
+import { EmptyCell } from "../components/Empty";
+import { Pagination } from "../components/Pagination";
 
 interface Location {
   id: string;
@@ -23,12 +26,21 @@ export function ItemsPage() {
   const [editing, setEditing] = useState<Item | null>(null);
   const [creating, setCreating] = useState(false);
   const [moving, setMoving] = useState<Item | null>(null);
+  const [tracing, setTracing] = useState<Item | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["items", activeCompanyId],
-    queryFn: () => api.get<Paginated<Item>>("/items?page=1&page_size=100"),
+    queryKey: ["items", activeCompanyId, page, pageSize],
+    queryFn: () => api.get<Paginated<Item>>(`/items?page=${page}&page_size=${pageSize}`),
     enabled: !!activeCompanyId,
   });
+  const { data: valuation } = useQuery({
+    queryKey: ["reports", "valuation", activeCompanyId],
+    queryFn: () => api.get<{ item_id: string; quantity: string; value: string }[]>("/reports/inventory-valuation"),
+    enabled: !!activeCompanyId,
+  });
+  const onHand = (itemId: string) => valuation?.find((v) => v.item_id === itemId)?.quantity;
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["items"] });
   const remove = useMutation({
@@ -55,8 +67,11 @@ export function ItemsPage() {
                 <th>SKU</th>
                 <th>Name</th>
                 <th>Type</th>
-                <th>Sale price</th>
-                <th>Tracked</th>
+                <th>Unit</th>
+                <th style={{ textAlign: "right" }}>Purchase price</th>
+                <th style={{ textAlign: "right" }}>Sale price</th>
+                <th style={{ textAlign: "right" }}>On hand</th>
+                <th>Status</th>
                 <th />
               </tr>
             </thead>
@@ -66,17 +81,28 @@ export function ItemsPage() {
                   <td>{it.sku}</td>
                   <td>{it.name}</td>
                   <td>{it.type}</td>
-                  <td>{it.sale_price ?? "—"}</td>
+                  <td>{it.unit}</td>
+                  <td style={{ textAlign: "right" }}>{it.purchase_price ?? "—"}</td>
+                  <td style={{ textAlign: "right" }}>{it.sale_price ?? "—"}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {it.track_inventory ? (Number(onHand(it.id) ?? 0)) : "—"}
+                  </td>
                   <td>
-                    <span className={`badge ${it.track_inventory ? "" : "off"}`}>
-                      {it.track_inventory ? "Yes" : "No"}
-                    </span>
+                    {(() => {
+                      const s = stockStatus(Number(onHand(it.id) ?? 0), Number(it.reorder_point ?? 0), it.track_inventory);
+                      return <span className={`badge ${s.cls}`}>{s.label}</span>;
+                    })()}
                   </td>
                   <td style={{ textAlign: "right" }}>
                     {it.track_inventory && (
-                      <button className="link" onClick={() => setMoving(it)}>
-                        Stock
-                      </button>
+                      <>
+                        <button className="link" onClick={() => setMoving(it)}>
+                          Stock
+                        </button>
+                        <button className="link" onClick={() => setTracing(it)}>
+                          History
+                        </button>
+                      </>
                     )}
                     <button className="link" onClick={() => setEditing(it)}>
                       Edit
@@ -89,14 +115,13 @@ export function ItemsPage() {
               ))}
               {data?.data.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="muted">
-                    No items yet.
-                  </td>
+                  <td colSpan={9}><EmptyCell>No items yet. Add your first product.</EmptyCell></td>
                 </tr>
               )}
             </tbody>
           </table>
         )}
+        <Pagination page={page} pageSize={pageSize} total={data?.total ?? 0} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} />
       </div>
 
       {(creating || editing) && (
@@ -116,6 +141,7 @@ export function ItemsPage() {
       )}
 
       {moving && <StockModal item={moving} onClose={() => setMoving(null)} />}
+      {tracing && <TraceModal item={tracing} onClose={() => setTracing(null)} />}
     </div>
   );
 }
@@ -131,10 +157,15 @@ function ItemForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { activeCompany } = useCompany();
+  const base = activeCompany?.base_currency ?? "USD";
   const [form, setForm] = useState<Partial<Item> & { sku: string; name: string }>(
     item ?? { sku: "", name: "", type: "inventory", unit: "unit", track_inventory: true, is_active: true },
   );
+  const [fxRate, setFxRate] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const itemForeign = !!form.currency && form.currency !== base;
+  const inBase = (v?: string | null) => Math.round((Number(v) || 0) * (Number(fxRate) || 0) * 100) / 100;
 
   const { data: accounts } = useQuery({
     queryKey: ["accounts", companyId],
@@ -149,10 +180,11 @@ function ItemForm({
         description: form.description || undefined,
         type: form.type ?? "inventory",
         unit: form.unit || "unit",
-        purchase_price: form.purchase_price || undefined,
+        purchase_price: form.purchase_price,
         sale_price: form.sale_price || undefined,
         currency: form.currency || undefined,
         track_inventory: form.track_inventory ?? true,
+        reorder_point: form.reorder_point || undefined,
         income_account_id: form.income_account_id || undefined,
         expense_account_id: form.expense_account_id || undefined,
         inventory_account_id: form.inventory_account_id || undefined,
@@ -201,11 +233,16 @@ function ItemForm({
         <label>Name *</label>
         <input value={form.name} onChange={(e) => set({ name: e.target.value })} />
       </div>
+      <div className="field">
+        <label>Description</label>
+        <input value={form.description ?? ""} onChange={(e) => set({ description: e.target.value })} />
+      </div>
       <div className="grid-2">
         <div className="field">
-          <label>Purchase price</label>
+          <label>Purchase price *</label>
           <input
             value={form.purchase_price ?? ""}
+            placeholder="cost per unit"
             onChange={(e) => set({ purchase_price: e.target.value })}
           />
         </div>
@@ -227,8 +264,38 @@ function ItemForm({
           <input
             value={form.currency ?? ""}
             maxLength={3}
+            placeholder={base}
             onChange={(e) => set({ currency: e.target.value.toUpperCase() })}
           />
+        </div>
+      </div>
+      {itemForeign && (
+        <>
+          <div className="field">
+            <label>Exchange rate (1 {form.currency} = ? {base})</label>
+            <input value={fxRate} placeholder="e.g. 3.67" onChange={(e) => setFxRate(e.target.value)} />
+          </div>
+          {Number(fxRate) > 0 && (
+            <div className="fx-note">
+              Purchase price <strong>{money(form.purchase_price ?? 0, form.currency!)}</strong> ≈ <strong>{money(inBase(form.purchase_price), base)}</strong>
+              {form.sale_price ? <> · Sale price <strong>{money(form.sale_price, form.currency!)}</strong> ≈ <strong>{money(inBase(form.sale_price), base)}</strong></> : null}
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                Stock value on the dashboard is booked in {base}. Buy this item via a Bill in {form.currency} with this rate so its stock value converts automatically.
+              </div>
+            </div>
+          )}
+        </>
+      )}
+      <div className="grid-2">
+        <div className="field">
+          <label>Reorder point (low-stock alert level)</label>
+          <input value={form.reorder_point ?? ""} placeholder="e.g. 10" onChange={(e) => set({ reorder_point: e.target.value })} />
+        </div>
+        <div className="field" style={{ display: "flex", alignItems: "flex-end" }}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", margin: 0 }}>
+            <input type="checkbox" style={{ width: "auto" }} checked={form.is_active ?? true} onChange={(e) => set({ is_active: e.target.checked })} />
+            Active (untick to retire this item)
+          </label>
         </div>
       </div>
 
@@ -285,7 +352,7 @@ function ItemForm({
         <button onClick={onClose}>Cancel</button>
         <button
           className="primary"
-          disabled={!form.sku || !form.name || save.isPending}
+          disabled={!form.sku || !form.name || !form.purchase_price || save.isPending}
           onClick={() => save.mutate()}
         >
           {save.isPending ? "Saving…" : "Save"}
@@ -302,6 +369,25 @@ function StockModal({ item, onClose }: { item: Item; onClose: () => void }) {
   const [quantity, setQuantity] = useState("");
   const [unitCost, setUnitCost] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // transfer
+  const [fromLoc, setFromLoc] = useState("");
+  const [toLoc, setToLoc] = useState("");
+  const [transferQty, setTransferQty] = useState("");
+  // adjust
+  const [adjLoc, setAdjLoc] = useState("");
+  const [adjQty, setAdjQty] = useState("");
+  const [adjReason, setAdjReason] = useState("");
+  const refetchLevels = () => qc.invalidateQueries({ queryKey: ["levels", item.id] });
+  const transfer = useMutation({
+    mutationFn: () => api.post(`/items/${item.id}/transfer`, { from_location_id: fromLoc, to_location_id: toLoc, quantity: transferQty }),
+    onSuccess: () => { refetchLevels(); setTransferQty(""); },
+    onError: (e) => setError(e instanceof ApiError ? e.message : "Transfer failed"),
+  });
+  const adjust = useMutation({
+    mutationFn: () => api.post(`/items/${item.id}/adjust`, { location_id: adjLoc, quantity_delta: adjQty, reason: adjReason }),
+    onSuccess: () => { refetchLevels(); setAdjQty(""); setAdjReason(""); },
+    onError: (e) => setError(e instanceof ApiError ? e.message : "Adjustment failed"),
+  });
 
   const { data: locations } = useQuery({
     queryKey: ["locations", item.company_id],
@@ -410,8 +496,93 @@ function StockModal({ item, onClose }: { item: Item; onClose: () => void }) {
               {submit.isPending ? "Posting…" : "Record movement"}
             </button>
           </div>
+
+          <hr style={{ margin: "18px 0", border: 0, borderTop: "1px solid var(--border)" }} />
+          <label style={{ fontWeight: 600 }}>Transfer between warehouses</label>
+          <div className="grid-2">
+            <div className="field"><label>From</label>
+              <select value={fromLoc} onChange={(e) => setFromLoc(e.target.value)}>
+                <option value="">Select…</option>
+                {(locations ?? []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>To</label>
+              <select value={toLoc} onChange={(e) => setToLoc(e.target.value)}>
+                <option value="">Select…</option>
+                {(locations ?? []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+            <div className="field" style={{ flex: 1 }}><label>Quantity</label><input value={transferQty} onChange={(e) => setTransferQty(e.target.value)} /></div>
+            <button disabled={!fromLoc || !toLoc || !transferQty || transfer.isPending} onClick={() => transfer.mutate()}>Transfer</button>
+          </div>
+
+          <hr style={{ margin: "18px 0", border: 0, borderTop: "1px solid var(--border)" }} />
+          <label style={{ fontWeight: 600 }}>Adjust stock (count / write-off)</label>
+          <div className="grid-2">
+            <div className="field"><label>Warehouse</label>
+              <select value={adjLoc} onChange={(e) => setAdjLoc(e.target.value)}>
+                <option value="">Select…</option>
+                {(locations ?? []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>Qty change (+/-)</label><input value={adjQty} placeholder="-2" onChange={(e) => setAdjQty(e.target.value)} /></div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+            <div className="field" style={{ flex: 1 }}><label>Reason</label><input value={adjReason} placeholder="damaged / stock count" onChange={(e) => setAdjReason(e.target.value)} /></div>
+            <button disabled={!adjLoc || !adjQty || adjust.isPending} onClick={() => adjust.mutate()}>Adjust</button>
+          </div>
         </>
       )}
+    </Modal>
+  );
+}
+
+
+interface TraceRow {
+  party_type: string; party_id: string | null; party_name: string;
+  direction: "in" | "out"; total_qty: string; total_value: string; movements: number; last_date: string;
+}
+
+/** Where this item's stock came from (suppliers) and who bought it (customers). */
+function TraceModal({ item, onClose }: { item: Item; onClose: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["trace", item.id],
+    queryFn: () => api.get<TraceRow[]>(`/items/${item.id}/traceability`),
+  });
+  const rows = data ?? [];
+  const inbound = rows.filter((r) => r.direction === "in");
+  const outbound = rows.filter((r) => r.direction === "out");
+  const section = (title: string, list: TraceRow[], qtyLabel: string) => (
+    <>
+      <label style={{ fontWeight: 600, marginTop: 10 }}>{title}</label>
+      <table style={{ marginBottom: 14 }}>
+        <thead><tr><th>Party</th><th style={{ textAlign: "right" }}>{qtyLabel}</th><th style={{ textAlign: "right" }}>Value</th><th style={{ textAlign: "right" }}>Txns</th><th>Last</th></tr></thead>
+        <tbody>
+          {list.map((r, i) => (
+            <tr key={i}>
+              <td>{r.party_name}{r.party_type !== "internal" ? "" : " (internal)"}</td>
+              <td style={{ textAlign: "right" }}>{Number(r.total_qty)}</td>
+              <td style={{ textAlign: "right" }}>{Number(r.total_value).toFixed(2)}</td>
+              <td style={{ textAlign: "right" }}>{r.movements}</td>
+              <td className="muted">{r.last_date}</td>
+            </tr>
+          ))}
+          {list.length === 0 && <tr><td colSpan={5} className="muted">No movements.</td></tr>}
+        </tbody>
+      </table>
+    </>
+  );
+  return (
+    <Modal title={`Stock history — ${item.name}`} onClose={onClose} width={680}>
+      {isLoading ? <p className="muted">Loading…</p> : (
+        <>
+          {section("Received from (suppliers / stock in)", inbound, "Qty in")}
+          {section("Sold / issued to (customers / stock out)", outbound, "Qty out")}
+        </>
+      )}
+      <div className="modal-actions"><button onClick={onClose}>Close</button></div>
     </Modal>
   );
 }

@@ -1,0 +1,27 @@
+# Render Blueprint for the Ebizz API (NestJS).
+# In Render: New → Blueprint → point at this repo. Render reads this file,
+# creates the service, then prompts you for the `sync: false` secrets below.
+services:
+  - type: web
+    name: ebizz-api
+    runtime: node
+    plan: free
+    # Render injects PORT automatically; the API reads it (see configuration.ts).
+    buildCommand: corepack enable && pnpm install && pnpm --filter @ebizz/shared build && pnpm --filter @ebizz/api build
+    startCommand: node apps/api/dist/main.js
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: API_GLOBAL_PREFIX
+        value: api/v1
+      # Fill these in the Render dashboard (from your Supabase project settings):
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Set to your deployed web origin(s), comma-separated, once Vercel is live:
+      - key: CORS_ORIGIN
+        sync: false

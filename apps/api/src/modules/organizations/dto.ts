@@ -53,3 +53,19 @@ export class CreateCompanyDto {
   @Length(2, 2)
   country?: string;
 }
+
+export class UpdateCompanyDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 200) name?: string;
+  @ApiPropertyOptional({ example: "AED" }) @IsOptional() @IsString() @Length(3, 3) base_currency?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() legal_name?: string;
+  @ApiPropertyOptional({ example: "DE" }) @IsOptional() @IsString() @Length(2, 2) country?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() address_line1?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() city?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() phone?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() email?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() tax_number?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() invoice_terms?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() invoice_footer?: string;
+  @ApiPropertyOptional({ description: "Data URL (max ~300KB) or https URL" })
+  @IsOptional() @IsString() logo_url?: string;
+}

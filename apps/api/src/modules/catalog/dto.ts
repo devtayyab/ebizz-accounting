@@ -1,5 +1,22 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from "@nestjs/swagger";
-import { IsBoolean, IsOptional, IsString, IsUUID, Length } from "class-validator";
+import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length } from "class-validator";
+import { ACCOUNT_TYPES } from "@ebizz/shared";
+
+export class CreateAccountDto {
+  @ApiProperty() @IsUUID() company_id!: string;
+  @ApiProperty() @IsString() @Length(1, 20) code!: string;
+  @ApiProperty() @IsString() @Length(1, 200) name!: string;
+  @ApiProperty({ enum: ACCOUNT_TYPES }) @IsIn(ACCOUNT_TYPES) type!: (typeof ACCOUNT_TYPES)[number];
+  @ApiPropertyOptional() @IsOptional() @IsUUID() parent_id?: string;
+  @ApiPropertyOptional({ example: "USD" }) @IsOptional() @IsString() @Length(3, 3) currency?: string;
+}
+
+export class UpdateAccountDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 20) code?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 200) name?: string;
+  @ApiPropertyOptional({ enum: ACCOUNT_TYPES }) @IsOptional() @IsIn(ACCOUNT_TYPES) type?: (typeof ACCOUNT_TYPES)[number];
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() is_active?: boolean;
+}
 
 export class CreateLocationDto {
   @ApiProperty()

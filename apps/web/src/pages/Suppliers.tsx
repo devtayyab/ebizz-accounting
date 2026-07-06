@@ -4,6 +4,8 @@ import type { Paginated, Supplier } from "@ebizz/shared";
 import { api, ApiError } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
 import { Modal } from "../components/Modal";
+import { EmptyCell } from "../components/Empty";
+import { Pagination } from "../components/Pagination";
 
 type FormState = Partial<Supplier> & { name: string };
 
@@ -12,10 +14,12 @@ export function SuppliersPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [creating, setCreating] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["suppliers", activeCompanyId],
-    queryFn: () => api.get<Paginated<Supplier>>("/suppliers?page=1&page_size=100"),
+    queryKey: ["suppliers", activeCompanyId, page, pageSize],
+    queryFn: () => api.get<Paginated<Supplier>>(`/suppliers?page=${page}&page_size=${pageSize}`),
     enabled: !!activeCompanyId,
   });
 
@@ -73,15 +77,12 @@ export function SuppliersPage() {
                 </tr>
               ))}
               {data?.data.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="muted">
-                    No suppliers yet.
-                  </td>
-                </tr>
+                <tr><td colSpan={6}><EmptyCell>No suppliers yet.</EmptyCell></td></tr>
               )}
             </tbody>
           </table>
         )}
+        <Pagination page={page} pageSize={pageSize} total={data?.total ?? 0} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} />
       </div>
 
       {(creating || editing) && (
