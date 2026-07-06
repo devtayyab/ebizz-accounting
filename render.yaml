@@ -12,7 +12,7 @@ services:
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_VERSION
-        value: "20"
+        value: "22"
       - key: API_GLOBAL_PREFIX
         value: api/v1
       # Fill these in the Render dashboard (from your Supabase project settings):
