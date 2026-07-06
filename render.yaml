@@ -5,7 +5,7 @@ services:
   - type: web
     name: ebizz-api
     runtime: node
-    plan: free
+    plan: starter   # $7/mo, always-on (no cold starts). Use "free" to avoid charges.
     # Render injects PORT automatically; the API reads it (see configuration.ts).
     buildCommand: corepack enable && pnpm install && pnpm --filter @ebizz/shared build && pnpm --filter @ebizz/api build
     startCommand: node apps/api/dist/main.js
