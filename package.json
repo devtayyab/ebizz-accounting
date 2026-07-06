@@ -1,0 +1,27 @@
+{
+  "name": "ebizz-accounting",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ebizz — multi-tenant, multi-currency, double-entry accounting platform with inventory, supplier and customer management.",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @ebizz/shared build && pnpm --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "dev:api": "pnpm --filter @ebizz/api dev",
+    "dev:web": "pnpm --filter @ebizz/web dev",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:types": "supabase gen types typescript --local > packages/shared/src/database.types.ts",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

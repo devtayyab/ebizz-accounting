@@ -1,0 +1,41 @@
+# ---------------------------------------------------------------------------
+# Local container orchestration for the API and web app.
+#
+# The database + auth are provided by the Supabase stack, which you run with the
+# Supabase CLI (`pnpm db:start`) — it manages its own containers. These services
+# talk to it via host.docker.internal. Set the values in `.env` from the output
+# of `supabase status`.
+#
+#   docker compose up --build
+# ---------------------------------------------------------------------------
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      API_PORT: 3000
+      API_GLOBAL_PREFIX: api/v1
+      CORS_ORIGIN: http://localhost:8080
+      # host.docker.internal lets the container reach the Supabase CLI stack
+      SUPABASE_URL: ${SUPABASE_URL_DOCKER:-http://host.docker.internal:54321}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+    ports:
+      - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-http://127.0.0.1:54321}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api/v1}
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
