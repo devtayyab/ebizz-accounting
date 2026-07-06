@@ -1,6 +1,16 @@
--- Ebizz — combined schema for a one-shot run in the Supabase SQL Editor.
--- Paste this whole file into Supabase → SQL Editor → Run (fresh project).
+-- Ebizz — clean full deploy for the Supabase SQL Editor (fresh install).
+-- WARNING: this DROPS the public schema (all app tables + data) and rebuilds it.
+-- Safe for a fresh/failed deploy. Do NOT run on a DB with real data you need.
 begin;
+
+-- ==== reset app schema (Supabase-standard) ====
+drop schema if exists public cascade;
+create schema public;
+grant usage on schema public to postgres, anon, authenticated, service_role;
+grant all on schema public to postgres, service_role;
+alter default privileges in schema public grant all on tables to postgres, anon, authenticated, service_role;
+alter default privileges in schema public grant all on functions to postgres, anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to postgres, anon, authenticated, service_role;
 
 -- ==== 0001_core_tenancy.sql ====
 -- ===========================================================================
@@ -3329,7 +3339,7 @@ $$;
 
 grant execute on all routines in schema public to anon, authenticated, service_role;
 
--- Record migration history so future 'supabase db push' sees these as applied.
+-- record migration history so future 'supabase db push' sees these as applied.
 create schema if not exists supabase_migrations;
 create table if not exists supabase_migrations.schema_migrations (version text not null primary key, statements text[], name text);
 insert into supabase_migrations.schema_migrations (version, name) values
