@@ -12,6 +12,7 @@ alter default privileges in schema public grant all on tables to postgres, anon,
 alter default privileges in schema public grant all on functions to postgres, anon, authenticated, service_role;
 alter default privileges in schema public grant all on sequences to postgres, anon, authenticated, service_role;
 
+
 -- ==== 0001_core_tenancy.sql ====
 -- ===========================================================================
 -- 0001_core_tenancy — extensions, shared helpers, and the multi-tenant core.
@@ -3339,6 +3340,515 @@ $$;
 
 grant execute on all routines in schema public to anon, authenticated, service_role;
 
+-- ==== 0028_expense_ops.sql ====
+-- ===========================================================================
+-- 0028_expense_ops — full lifecycle for expenses (edit / delete / reverse-pay).
+-- record_expense (0025) posts an expense immediately. These helpers let the
+-- API edit, delete, or un-pay an already-posted expense while keeping the GL
+-- balanced by mirroring the original journal entry (via _mirror_entry, 0015).
+--   • reverse_expense(id)          — post a mirror of the expense's JE
+--                                    (used by DELETE: neutralise then drop row).
+--   • revise_expense(id, …)        — mirror the old JE, post a fresh one from the
+--                                    new values, update the row in place (edit).
+--   • reverse_expense_payment(id)  — a paid expense becomes payable: Dr cash /
+--                                    Cr A/P, flip payment_status to 'unpaid'.
+-- ===========================================================================
+
+-- Neutralise an expense's posting by mirroring its journal entry.
+create or replace function public.reverse_expense(p_id uuid)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_org uuid; v_company uuid; v_entry uuid;
+begin
+  select organization_id, company_id, journal_entry_id
+    into v_org, v_company, v_entry
+    from public.expenses where id = p_id for update;
+  if v_org is null then raise exception 'Expense not found'; end if;
+  if not public.user_can_write(v_org) then raise exception 'Not authorized'; end if;
+  if v_entry is null then return null; end if;
+  return public._mirror_entry(v_org, v_company, v_entry, 'expense_reversal', p_id, 'Reversal of expense');
+end;
+$$;
+
+-- Edit a posted expense: reverse the old journal entry, post a new one, and
+-- update the expenses row in place (same id, new journal_entry_id).
+create or replace function public.revise_expense(
+  p_id uuid, p_date date, p_category_account uuid, p_amount numeric,
+  p_tax_amount numeric default 0, p_paid_account uuid default null,
+  p_supplier uuid default null, p_reference text default null, p_memo text default null,
+  p_currency text default null, p_fx_rate numeric default 1
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_org uuid; v_company uuid; v_base text; v_old uuid; v_ccy text; v_fx numeric;
+  v_total numeric; v_entry uuid; v_credit uuid; v_status text;
+  v_base_amount numeric; v_base_tax numeric;
+begin
+  select e.organization_id, e.company_id, e.journal_entry_id, c.base_currency
+    into v_org, v_company, v_old, v_base
+    from public.expenses e join public.companies c on c.id = e.company_id
+    where e.id = p_id for update;
+  if v_org is null then raise exception 'Expense not found'; end if;
+  if not public.user_can_write(v_org) then raise exception 'Not authorized'; end if;
+  if p_amount <= 0 then raise exception 'Amount must be positive'; end if;
+
+  -- neutralise the previous posting
+  if v_old is not null then
+    perform public._mirror_entry(v_org, v_company, v_old, 'expense_reversal', p_id, 'Revision of expense');
+  end if;
+
+  v_ccy := coalesce(nullif(p_currency, ''), v_base);
+  v_fx  := coalesce(p_fx_rate, 1);
+  if v_fx <= 0 then v_fx := 1; end if;
+  if v_ccy = v_base then v_fx := 1; end if;
+
+  v_total := p_amount + coalesce(p_tax_amount, 0);
+  v_base_amount := round(p_amount * v_fx, 4);
+  v_base_tax := round(coalesce(p_tax_amount, 0) * v_fx, 4);
+
+  if p_paid_account is not null then
+    v_credit := p_paid_account; v_status := 'paid';
+  else
+    v_credit := coalesce((select payable_account_id from public.suppliers where id = p_supplier),
+                         public._acct(v_company, '2000'));
+    v_status := 'unpaid';
+  end if;
+
+  insert into public.journal_entries (organization_id, company_id, entry_date, memo, reference, status, source_type, source_id, created_by)
+    values (v_org, v_company, p_date, coalesce(p_memo, 'Expense'), p_reference, 'draft', 'expense', p_id, auth.uid())
+    returning id into v_entry;
+
+  insert into public.journal_lines (organization_id, journal_entry_id, account_id, description, currency, debit, base_debit)
+    values (v_org, v_entry, p_category_account, coalesce(p_memo, 'Expense'), v_ccy, p_amount, v_base_amount);
+  if coalesce(p_tax_amount, 0) > 0 then
+    insert into public.journal_lines (organization_id, journal_entry_id, account_id, description, currency, debit, base_debit)
+      values (v_org, v_entry, public._acct(v_company, '2100'), 'Input tax', v_ccy, p_tax_amount, v_base_tax);
+  end if;
+  insert into public.journal_lines (organization_id, journal_entry_id, account_id, description, currency, credit, base_credit)
+    values (v_org, v_entry, v_credit, 'Expense payment', v_ccy, v_total, v_base_amount + v_base_tax);
+
+  update public.journal_entries set status = 'posted' where id = v_entry;
+
+  update public.expenses set
+    expense_date = p_date, category_account_id = p_category_account, supplier_id = p_supplier,
+    paid_account_id = p_paid_account, payment_status = v_status, amount = p_amount,
+    tax_amount = coalesce(p_tax_amount, 0), total = v_total, currency = v_ccy, fx_rate = v_fx,
+    reference = p_reference, memo = p_memo, journal_entry_id = v_entry
+    where id = p_id;
+  return p_id;
+end;
+$$;
+
+-- Reverse the *payment* of a paid expense (keep the expense recognised, but make
+-- it payable again): Dr cash/bank (restore) / Cr A/P.
+create or replace function public.reverse_expense_payment(p_id uuid)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_org uuid; v_company uuid; v_paid uuid; v_status text;
+  v_total numeric; v_ccy text; v_fx numeric; v_ap uuid; v_entry uuid; v_base_total numeric;
+begin
+  select organization_id, company_id, paid_account_id, payment_status, total, currency, fx_rate
+    into v_org, v_company, v_paid, v_status, v_total, v_ccy, v_fx
+    from public.expenses where id = p_id for update;
+  if v_org is null then raise exception 'Expense not found'; end if;
+  if not public.user_can_write(v_org) then raise exception 'Not authorized'; end if;
+  if v_status <> 'paid' then raise exception 'Only a paid expense can have its payment reversed'; end if;
+  if v_paid is null then raise exception 'This expense has no paid-from account'; end if;
+
+  v_ap := public._acct(v_company, '2000');
+  v_base_total := round(v_total * coalesce(v_fx, 1), 4);
+
+  insert into public.journal_entries (organization_id, company_id, entry_date, memo, status, source_type, source_id, created_by)
+    values (v_org, v_company, current_date, 'Reverse expense payment', 'draft', 'expense_payment_reversal', p_id, auth.uid())
+    returning id into v_entry;
+  insert into public.journal_lines (organization_id, journal_entry_id, account_id, description, currency, debit, base_debit)
+    values (v_org, v_entry, v_paid, 'Reverse expense payment', v_ccy, v_total, v_base_total);
+  insert into public.journal_lines (organization_id, journal_entry_id, account_id, description, currency, credit, base_credit)
+    values (v_org, v_entry, v_ap, 'Now payable', v_ccy, v_total, v_base_total);
+  update public.journal_entries set status = 'posted' where id = v_entry;
+
+  update public.expenses set payment_status = 'unpaid', paid_account_id = null where id = p_id;
+  return v_entry;
+end;
+$$;
+
+grant execute on all routines in schema public to anon, authenticated, service_role;
+
+-- ==== 0029_funds_gl_payment.sql ====
+-- ===========================================================================
+-- 0029_funds_gl_payment — connect the Funds module to the ledger.
+--   • fund_accounts gain gl_account_id → the cash/bank account the fund maps to.
+--   • fund_transactions gain a 'withdrawal' entry type (money leaving the fund,
+--     same sign effect as 'payment').
+--   • receive_invoice_payment(invoice, fund, amount?) posts a real GL payment
+--     (Dr fund's cash/bank / Cr A/R, settling the invoice via record_payment)
+--     AND records a fund receipt so the fund balance grows. This backs both the
+--     invoice "Payment type = fund" flow and customer deposits (partial amounts).
+-- ===========================================================================
+
+alter table public.fund_accounts
+  add column if not exists gl_account_id uuid references public.accounts(id);
+
+-- Allow a 'withdrawal' transaction type (behaves like 'payment' for balances).
+alter table public.fund_transactions
+  drop constraint if exists fund_transactions_entry_type_check;
+alter table public.fund_transactions
+  add constraint fund_transactions_entry_type_check
+  check (entry_type in ('deposit', 'payment', 'receipt', 'adjustment', 'withdrawal'));
+
+-- Receive a payment/deposit for an invoice through a fund. Amount defaults to
+-- the full outstanding balance; a smaller amount records a partial deposit.
+create or replace function public.receive_invoice_payment(
+  p_invoice uuid, p_fund uuid, p_amount numeric default null, p_date date default null
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_org uuid; v_company uuid; v_customer uuid; v_ccy text; v_fx numeric;
+  v_total numeric; v_paid numeric; v_status text; v_number text;
+  v_out numeric; v_amt numeric; v_gl uuid; v_fund_org uuid; v_payment uuid;
+  v_when date := coalesce(p_date, current_date);
+begin
+  select organization_id, company_id, customer_id, currency, fx_rate, total, amount_paid, status, invoice_number
+    into v_org, v_company, v_customer, v_ccy, v_fx, v_total, v_paid, v_status, v_number
+    from public.sales_invoices where id = p_invoice for update;
+  if v_org is null then raise exception 'Invoice not found'; end if;
+  if not public.user_can_write(v_org) then raise exception 'Not authorized'; end if;
+  if v_status <> 'posted' then raise exception 'Only a posted invoice can receive a payment'; end if;
+
+  v_out := round(v_total - coalesce(v_paid, 0), 4);
+  if v_out <= 0 then raise exception 'Invoice is already fully paid'; end if;
+
+  v_amt := coalesce(p_amount, v_out);
+  if v_amt <= 0 then raise exception 'Amount must be positive'; end if;
+  if v_amt > v_out + 0.0049 then raise exception 'Amount exceeds the outstanding balance'; end if;
+  if v_amt > v_out then v_amt := v_out; end if;
+
+  select gl_account_id, organization_id into v_gl, v_fund_org from public.fund_accounts where id = p_fund;
+  if v_fund_org is null then raise exception 'Fund not found'; end if;
+  if v_fund_org <> v_org then raise exception 'Fund belongs to another organization'; end if;
+  if v_gl is null then raise exception 'This fund is not linked to a cash/bank account — set one on the fund first'; end if;
+
+  -- Ledger: settle A/R against the fund's cash/bank account.
+  v_payment := public.record_payment(
+    v_company, 'customer', v_customer, v_when,
+    v_amt, v_ccy, 'fund', v_gl, v_number,
+    jsonb_build_array(jsonb_build_object('invoice_id', p_invoice, 'amount', v_amt)),
+    coalesce(v_fx, 1));
+
+  -- Fund: money received into the fund (consolidated to base via fx_rate).
+  insert into public.fund_transactions
+    (organization_id, company_id, fund_account_id, txn_date, entry_type, amount,
+     customer_id, currency, fx_rate, reference, memo, created_by)
+    values (v_org, v_company, p_fund, v_when, 'receipt', v_amt,
+            v_customer, v_ccy, coalesce(v_fx, 1), v_number,
+            'Invoice ' || v_number || ' payment', auth.uid());
+
+  return v_payment;
+end;
+$$;
+
+grant execute on all routines in schema public to anon, authenticated, service_role;
+
+-- ==== 0030_line_kind.sql ====
+-- ===========================================================================
+-- 0030_line_kind — distinguish product "items" from "services" on document
+-- lines so the invoice can render the two-table layout (Items table + Services
+-- table). Purely presentational: posting still resolves accounts per line, so
+-- a service line (no item_id) continues to post to revenue.
+-- ===========================================================================
+
+alter table public.sales_invoice_lines
+  add column if not exists line_kind text not null default 'item'
+  check (line_kind in ('item', 'service'));
+
+alter table public.purchase_bill_lines
+  add column if not exists line_kind text not null default 'item'
+  check (line_kind in ('item', 'service'));
+
+-- ==== 0031_documents.sql ====
+-- ===========================================================================
+-- 0031_documents — attach files (PDFs, images…) to invoices. Bytes live in a
+-- private Supabase Storage bucket 'invoice-docs' under {org}/{invoice}/{file};
+-- this table holds the metadata. The browser uploads/downloads directly via
+-- signed URLs (storage RLS scopes access by org path); the API owns metadata.
+-- ===========================================================================
+
+create table if not exists public.documents (
+  id              uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  company_id      uuid not null references public.companies(id) on delete cascade,
+  invoice_id      uuid references public.sales_invoices(id) on delete cascade,
+  name            text not null,
+  mime            text,
+  size            bigint,
+  storage_path    text not null,
+  created_by      uuid references auth.users(id),
+  created_at      timestamptz not null default now()
+);
+create index if not exists idx_documents_invoice on public.documents(invoice_id, created_at desc);
+
+select public._apply_org_policies('public.documents');
+
+-- Storage bucket + RLS. Guarded so the migration still applies on a plain
+-- Postgres (no Supabase 'storage' schema) during local validation.
+do $$
+begin
+  if exists (select 1 from information_schema.schemata where schema_name = 'storage') then
+    insert into storage.buckets (id, name, public)
+      values ('invoice-docs', 'invoice-docs', false)
+      on conflict (id) do nothing;
+
+    execute $p$ drop policy if exists "invoice_docs_read" on storage.objects $p$;
+    execute $p$ create policy "invoice_docs_read" on storage.objects for select to authenticated
+      using (bucket_id = 'invoice-docs'
+             and (storage.foldername(name))[1]::uuid in (select public.user_org_ids())) $p$;
+
+    execute $p$ drop policy if exists "invoice_docs_insert" on storage.objects $p$;
+    execute $p$ create policy "invoice_docs_insert" on storage.objects for insert to authenticated
+      with check (bucket_id = 'invoice-docs'
+                  and (storage.foldername(name))[1]::uuid in (select public.user_org_ids())) $p$;
+
+    execute $p$ drop policy if exists "invoice_docs_delete" on storage.objects $p$;
+    execute $p$ create policy "invoice_docs_delete" on storage.objects for delete to authenticated
+      using (bucket_id = 'invoice-docs'
+             and (storage.foldername(name))[1]::uuid in (select public.user_org_ids())) $p$;
+  end if;
+end $$;
+
+-- ==== 0032_soft_delete.sql ====
+-- ===========================================================================
+-- 0032_soft_delete — Recycle Bin. Deleting an invoice/bill/expense/item/
+-- customer/supplier now sets deleted_at (hidden from lists) instead of a hard
+-- delete, and reverses any ledger impact, so it can be viewed and restored.
+--   • soft_delete_record(type,id) — reverse GL if needed, then set deleted_at.
+--   • restore_record(type,id)      — re-apply GL if needed, clear deleted_at.
+--   • purge_record(type,id)        — permanent hard delete.
+--   • recycle_bin(company)         — union of all deleted rows for the bin UI.
+-- ===========================================================================
+
+alter table public.sales_invoices  add column if not exists deleted_at timestamptz, add column if not exists deleted_by uuid;
+alter table public.purchase_bills   add column if not exists deleted_at timestamptz, add column if not exists deleted_by uuid;
+alter table public.expenses         add column if not exists deleted_at timestamptz, add column if not exists deleted_by uuid;
+alter table public.items            add column if not exists deleted_at timestamptz, add column if not exists deleted_by uuid;
+alter table public.customers        add column if not exists deleted_at timestamptz, add column if not exists deleted_by uuid;
+alter table public.suppliers        add column if not exists deleted_at timestamptz, add column if not exists deleted_by uuid;
+
+create or replace function public._org_of(p_type text, p_id uuid) returns uuid language plpgsql stable security definer set search_path = public as $$
+declare v uuid;
+begin
+  case p_type
+    when 'invoice'  then select organization_id into v from public.sales_invoices where id = p_id;
+    when 'bill'     then select organization_id into v from public.purchase_bills where id = p_id;
+    when 'expense'  then select organization_id into v from public.expenses where id = p_id;
+    when 'item'     then select organization_id into v from public.items where id = p_id;
+    when 'customer' then select organization_id into v from public.customers where id = p_id;
+    when 'supplier' then select organization_id into v from public.suppliers where id = p_id;
+    else raise exception 'Unsupported record type %', p_type;
+  end case;
+  return v;
+end;
+$$;
+
+create or replace function public.soft_delete_record(p_type text, p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_org uuid; v_status text; v_paid numeric;
+begin
+  v_org := public._org_of(p_type, p_id);
+  if v_org is null then raise exception 'Record not found'; end if;
+  if not public.user_can_write(v_org) then raise exception 'Not authorized'; end if;
+
+  if p_type = 'invoice' then
+    select status, amount_paid into v_status, v_paid from public.sales_invoices where id = p_id;
+    if coalesce(v_paid,0) > 0 then raise exception 'Reverse the payments before deleting this invoice'; end if;
+    if v_status = 'posted' then perform public.reverse_document('invoice', p_id); end if;
+    update public.sales_invoices set deleted_at = now(), deleted_by = auth.uid() where id = p_id;
+  elsif p_type = 'bill' then
+    select status, amount_paid into v_status, v_paid from public.purchase_bills where id = p_id;
+    if coalesce(v_paid,0) > 0 then raise exception 'Reverse the payments before deleting this bill'; end if;
+    if v_status = 'posted' then perform public.reverse_document('bill', p_id); end if;
+    update public.purchase_bills set deleted_at = now(), deleted_by = auth.uid() where id = p_id;
+  elsif p_type = 'expense' then
+    perform public.reverse_expense(p_id);
+    update public.expenses set deleted_at = now(), deleted_by = auth.uid() where id = p_id;
+  elsif p_type = 'item' then
+    update public.items set deleted_at = now(), deleted_by = auth.uid() where id = p_id;
+  elsif p_type = 'customer' then
+    update public.customers set deleted_at = now(), deleted_by = auth.uid() where id = p_id;
+  elsif p_type = 'supplier' then
+    update public.suppliers set deleted_at = now(), deleted_by = auth.uid() where id = p_id;
+  else
+    raise exception 'Unsupported record type %', p_type;
+  end if;
+end;
+$$;
+
+create or replace function public.restore_record(p_type text, p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_org uuid; v_status text; v_rev uuid; v_orgc uuid; v_company uuid;
+begin
+  v_org := public._org_of(p_type, p_id);
+  if v_org is null then raise exception 'Record not found'; end if;
+  if not public.user_can_write(v_org) then raise exception 'Not authorized'; end if;
+
+  if p_type = 'invoice' then
+    select status into v_status from public.sales_invoices where id = p_id;
+    if v_status = 'void' then perform public.restore_document('invoice', p_id); end if;
+    update public.sales_invoices set deleted_at = null, deleted_by = null where id = p_id;
+  elsif p_type = 'bill' then
+    select status into v_status from public.purchase_bills where id = p_id;
+    if v_status = 'void' then perform public.restore_document('bill', p_id); end if;
+    update public.purchase_bills set deleted_at = null, deleted_by = null where id = p_id;
+  elsif p_type = 'expense' then
+    -- re-apply the ledger by mirroring the reversal entry created at delete time
+    select organization_id, company_id into v_orgc, v_company from public.expenses where id = p_id;
+    select id into v_rev from public.journal_entries
+      where source_type = 'expense_reversal' and source_id = p_id and status = 'posted'
+      order by created_at desc limit 1;
+    if v_rev is not null then
+      perform public._mirror_entry(v_orgc, v_company, v_rev, 'expense_restore', p_id, 'Restore of expense');
+    end if;
+    update public.expenses set deleted_at = null, deleted_by = null where id = p_id;
+  elsif p_type = 'item' then
+    update public.items set deleted_at = null, deleted_by = null where id = p_id;
+  elsif p_type = 'customer' then
+    update public.customers set deleted_at = null, deleted_by = null where id = p_id;
+  elsif p_type = 'supplier' then
+    update public.suppliers set deleted_at = null, deleted_by = null where id = p_id;
+  else
+    raise exception 'Unsupported record type %', p_type;
+  end if;
+end;
+$$;
+
+create or replace function public.purge_record(p_type text, p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_org uuid;
+begin
+  v_org := public._org_of(p_type, p_id);
+  if v_org is null then raise exception 'Record not found'; end if;
+  if not public.user_can_write(v_org) then raise exception 'Not authorized'; end if;
+
+  case p_type
+    when 'invoice'  then delete from public.sales_invoices where id = p_id;
+    when 'bill'     then delete from public.purchase_bills where id = p_id;
+    when 'expense'  then delete from public.expenses where id = p_id;
+    when 'item'     then delete from public.items where id = p_id;
+    when 'customer' then delete from public.customers where id = p_id;
+    when 'supplier' then delete from public.suppliers where id = p_id;
+    else raise exception 'Unsupported record type %', p_type;
+  end case;
+end;
+$$;
+
+-- Union of all soft-deleted rows for the Recycle Bin UI.
+create or replace function public.recycle_bin(p_company uuid)
+returns table (type text, id uuid, label text, sub text, deleted_at timestamptz)
+language sql stable security definer set search_path = public as $$
+  select 'invoice', i.id, i.invoice_number, coalesce(c.name, ''), i.deleted_at
+    from public.sales_invoices i left join public.customers c on c.id = i.customer_id
+    where i.company_id = p_company and i.deleted_at is not null
+  union all
+  select 'bill', b.id, b.bill_number, coalesce(s.name, ''), b.deleted_at
+    from public.purchase_bills b left join public.suppliers s on s.id = b.supplier_id
+    where b.company_id = p_company and b.deleted_at is not null
+  union all
+  select 'expense', e.id, coalesce(e.memo, 'Expense'), to_char(e.total, 'FM999999990.00'), e.deleted_at
+    from public.expenses e where e.company_id = p_company and e.deleted_at is not null
+  union all
+  select 'item', it.id, it.name, it.sku, it.deleted_at
+    from public.items it where it.company_id = p_company and it.deleted_at is not null
+  union all
+  select 'customer', c.id, c.name, coalesce(c.email, ''), c.deleted_at
+    from public.customers c where c.company_id = p_company and c.deleted_at is not null
+  union all
+  select 'supplier', s.id, s.name, coalesce(s.email, ''), s.deleted_at
+    from public.suppliers s where s.company_id = p_company and s.deleted_at is not null
+  order by deleted_at desc;
+$$;
+
+grant execute on all routines in schema public to anon, authenticated, service_role;
+
+-- ==== 0033_audit_reports.sql ====
+-- ===========================================================================
+-- 0033_audit_reports — extra reports for auditing:
+--   • report_tax_summary     — output vs input tax (account 2100) + net payable.
+--   • report_day_book        — chronological posted journal entries (audit trail).
+--   • report_sales_register  — one row per invoice (net / tax / total / status).
+--   • report_purchase_register — one row per bill.
+-- (The Account Ledger / Cash Book tab reuses report_general_ledger by account.)
+-- ===========================================================================
+
+create or replace function public.report_tax_summary(
+  p_company uuid, p_from date default null, p_to date default null
+) returns table (label text, amount numeric)
+language sql stable security definer set search_path = public as $$
+  with t as (
+    select coalesce(sum(l.base_credit), 0) as output_tax,
+           coalesce(sum(l.base_debit), 0)  as input_tax
+    from public.journal_lines l
+    join public.journal_entries e on e.id = l.journal_entry_id
+    join public.accounts a on a.id = l.account_id
+    where e.company_id = p_company and e.status = 'posted' and a.code = '2100'
+      and (p_from is null or e.entry_date >= p_from)
+      and (p_to is null or e.entry_date <= p_to)
+      and e.organization_id in (select public.user_org_ids())
+  )
+  select 'Output tax (collected on sales)', output_tax from t
+  union all select 'Input tax (paid on purchases/expenses)', input_tax from t
+  union all select 'Net tax payable', output_tax - input_tax from t;
+$$;
+
+create or replace function public.report_day_book(
+  p_company uuid, p_from date default null, p_to date default null
+) returns table (
+  entry_date date, entry_id uuid, memo text, source_type text, reference text,
+  debit_total numeric, credit_total numeric
+) language sql stable security definer set search_path = public as $$
+  select e.entry_date, e.id, e.memo, e.source_type, e.reference,
+         coalesce(sum(l.base_debit), 0), coalesce(sum(l.base_credit), 0)
+  from public.journal_entries e
+  join public.journal_lines l on l.journal_entry_id = e.id
+  where e.company_id = p_company and e.status = 'posted'
+    and (p_from is null or e.entry_date >= p_from)
+    and (p_to is null or e.entry_date <= p_to)
+    and e.organization_id in (select public.user_org_ids())
+  group by e.id, e.entry_date, e.memo, e.source_type, e.reference, e.created_at
+  order by e.entry_date desc, e.created_at desc;
+$$;
+
+create or replace function public.report_sales_register(
+  p_company uuid, p_from date default null, p_to date default null
+) returns table (
+  id uuid, number text, doc_date date, party text, currency text,
+  net numeric, tax numeric, total numeric, status text
+) language sql stable security definer set search_path = public as $$
+  select i.id, i.invoice_number, i.invoice_date, c.name, i.currency,
+         (i.subtotal - i.discount_total), i.tax_total, i.total, i.status
+  from public.sales_invoices i
+  left join public.customers c on c.id = i.customer_id
+  where i.company_id = p_company and i.deleted_at is null
+    and (p_from is null or i.invoice_date >= p_from)
+    and (p_to is null or i.invoice_date <= p_to)
+    and i.organization_id in (select public.user_org_ids())
+  order by i.invoice_date desc, i.invoice_number desc;
+$$;
+
+create or replace function public.report_purchase_register(
+  p_company uuid, p_from date default null, p_to date default null
+) returns table (
+  id uuid, number text, doc_date date, party text, currency text,
+  net numeric, tax numeric, total numeric, status text
+) language sql stable security definer set search_path = public as $$
+  select b.id, b.bill_number, b.bill_date, s.name, b.currency,
+         (b.subtotal - b.discount_total), b.tax_total, b.total, b.status
+  from public.purchase_bills b
+  left join public.suppliers s on s.id = b.supplier_id
+  where b.company_id = p_company and b.deleted_at is null
+    and (p_from is null or b.bill_date >= p_from)
+    and (p_to is null or b.bill_date <= p_to)
+    and b.organization_id in (select public.user_org_ids())
+  order by b.bill_date desc, b.bill_number desc;
+$$;
+
+grant execute on all routines in schema public to anon, authenticated, service_role;
+
 -- record migration history so future 'supabase db push' sees these as applied.
 create schema if not exists supabase_migrations;
 create table if not exists supabase_migrations.schema_migrations (version text not null primary key, statements text[], name text);
@@ -3369,6 +3879,12 @@ insert into supabase_migrations.schema_migrations (version, name) values
   ('0024','aging_base_currency'),
   ('0025','currency_everywhere'),
   ('0026','payment_statement_base_currency'),
-  ('0027','user_approval')
+  ('0027','user_approval'),
+  ('0028','expense_ops'),
+  ('0029','funds_gl_payment'),
+  ('0030','line_kind'),
+  ('0031','documents'),
+  ('0032','soft_delete'),
+  ('0033','audit_reports')
 on conflict (version) do nothing;
 commit;
