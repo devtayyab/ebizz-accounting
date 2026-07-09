@@ -635,7 +635,9 @@ a.activity-row:hover { background: var(--hover); }
 .invoice-doc .inv-company { color: #0f172a; }
 .invoice-doc .inv-party-name { color: #0f172a; }
 .invoice-doc .inv-table tbody td { color: #1f2937; }
-.invoice-doc .inv-totals > div { color: #1f2937; }
+/* dark text on the plain total rows, but NOT the accent Outstanding bar */
+.invoice-doc .inv-totals > div:not(.inv-balance) { color: #1f2937; }
+.invoice-doc .inv-balance { color: #fff; }
 
 /* Template accents (all keep the white sheet; only the accent + type change). */
 .tpl-teal    { --inv-accent: #2b5f6b; }
@@ -734,7 +736,8 @@ a.activity-row:hover { background: var(--hover); }
 
 .inv-summary { display: flex; justify-content: space-between; gap: 24px; margin-top: 20px; }
 .inv-notes { flex: 1; }
-.inv-totals { width: 300px; flex-shrink: 0; }
+/* margin-left:auto keeps totals pinned right even when there are no notes */
+.inv-totals { width: 300px; flex-shrink: 0; margin-left: auto; }
 .inv-totals > div {
   display: flex;
   justify-content: space-between;
