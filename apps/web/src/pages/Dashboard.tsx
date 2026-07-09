@@ -1,11 +1,14 @@
 import type { CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import type { AgingRow, Item, Paginated, ProfitAndLoss } from "@ebizz/shared";
+import type { AgingRow, ProfitAndLoss } from "@ebizz/shared";
 import { api } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
 import { money } from "../lib/format";
 import { Icon, type IconName } from "../components/Icon";
+
+interface FundBalance { id: string; name: string; balance: number; gl_account_id: string | null }
+interface Activity { type: string; label: string; sub: string; amount: string; currency: string; created_at: string; link?: string }
 
 export function Dashboard() {
   const { activeCompanyId, activeCompany } = useCompany();
@@ -15,8 +18,9 @@ export function Dashboard() {
   const pnl = useQuery({ queryKey: ["reports", "pnl", activeCompanyId], queryFn: () => api.get<ProfitAndLoss>("/reports/profit-loss"), ...on });
   const ar = useQuery({ queryKey: ["reports", "ar", activeCompanyId], queryFn: () => api.get<AgingRow[]>("/reports/ar-aging"), ...on });
   const ap = useQuery({ queryKey: ["reports", "ap", activeCompanyId], queryFn: () => api.get<AgingRow[]>("/reports/ap-aging"), ...on });
-  const items = useQuery({ queryKey: ["items", activeCompanyId, "count"], queryFn: () => api.get<Paginated<Item>>("/items?page=1&page_size=1"), ...on });
   const valuation = useQuery({ queryKey: ["reports", "valuation", activeCompanyId], queryFn: () => api.get<{ value: string }[]>("/reports/inventory-valuation"), ...on });
+  const funds = useQuery({ queryKey: ["funds", activeCompanyId], queryFn: () => api.get<FundBalance[]>("/funds"), ...on });
+  const activity = useQuery({ queryKey: ["dashboard", "activity", activeCompanyId], queryFn: () => api.get<Activity[]>("/reports/recent-activity"), ...on });
 
   const revenue = Number(pnl.data?.total_income ?? 0);
   const expenses = Number(pnl.data?.total_expenses ?? 0);
@@ -31,7 +35,6 @@ export function Dashboard() {
     { label: "Stock Value (at cost)", value: money(stockValue, ccy), icon: "inventory", accent: "#0d9488" },
     { label: "Accounts Receivable", value: money(arTotal, ccy), icon: "arrowIn", accent: "#6d5efc" },
     { label: "Accounts Payable", value: money(apTotal, ccy), icon: "arrowOut", accent: "#0ea5e9" },
-    { label: "Items", value: String(items.data?.total ?? 0), icon: "tag", accent: "#f59e0b" },
   ];
 
   const bars = [
@@ -71,8 +74,56 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+
+      <div className="dash-2col">
+        <div className="card">
+          <h3 className="card-title">Recent activity</h3>
+          {activity.isLoading ? <p className="muted">Loading…</p>
+            : (activity.data ?? []).length === 0 ? <p className="muted">No activity yet.</p>
+            : (
+              <ul className="activity-feed">
+                {(activity.data ?? []).map((a, i) => {
+                  const row = (
+                    <>
+                      <span className={`badge ${badgeCls(a.type)}`} style={{ minWidth: 74, textAlign: "center" }}>{a.sub}</span>
+                      <span className="activity-label">{a.label}</span>
+                      <span className="activity-amount">{money(a.amount, a.currency)}</span>
+                    </>
+                  );
+                  return (
+                    <li key={i}>
+                      {a.link ? <Link to={a.link} className="activity-row">{row}</Link> : <div className="activity-row">{row}</div>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+        </div>
+        <div className="card">
+          <h3 className="card-title">Logistics funds &amp; balances</h3>
+          {funds.isLoading ? <p className="muted">Loading…</p>
+            : (funds.data ?? []).length === 0 ? <p className="muted">No fund accounts. <Link className="link" to="/funds">Create one →</Link></p>
+            : (
+              <table>
+                <thead><tr><th>Fund</th><th style={{ textAlign: "right" }}>Balance</th></tr></thead>
+                <tbody>
+                  {(funds.data ?? []).map((f) => (
+                    <tr key={f.id}>
+                      <td>{f.name}</td>
+                      <td style={{ textAlign: "right", fontWeight: 600, color: f.balance < 0 ? "var(--danger)" : "inherit" }}>{money(f.balance, ccy)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+        </div>
+      </div>
     </div>
   );
+}
+
+function badgeCls(type: string): string {
+  return type === "invoice" ? "ok" : type === "bill" ? "info" : type === "payment" ? "" : "warn";
 }
 
 function StatCard({ label, value, icon, accent }: { label: string; value: string; icon: IconName; accent: string }) {

@@ -648,6 +648,18 @@ th {
 .quick-action.primary .qa-arrow { color: rgba(255, 255, 255, 0.85); }
 .quick-action.primary:hover { background: var(--primary-hover); }
 
+/* --- dashboard recent activity feed --- */
+.activity-feed { list-style: none; margin: 0; padding: 0; }
+.activity-feed li { border-bottom: 1px solid var(--border); }
+.activity-feed li:last-child { border-bottom: none; }
+.activity-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 2px; color: inherit; text-decoration: none;
+}
+a.activity-row:hover { background: var(--hover); }
+.activity-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-amount { font-weight: 600; }
+
 /* --- printable invoice --- */
 .invoice-doc {
   max-width: 820px;
