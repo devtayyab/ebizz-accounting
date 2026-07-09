@@ -25,7 +25,7 @@ export class InvoiceLineDto {
 export class CreateInvoiceDto {
   @ApiProperty() @IsUUID() company_id!: string;
   @ApiProperty() @IsUUID() customer_id!: string;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() location_id?: string;
+  @ApiProperty({ description: "Warehouse to issue stock from — required." }) @IsUUID() location_id!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() invoice_number?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() invoice_date?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() due_date?: string;

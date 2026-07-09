@@ -14,6 +14,7 @@ import { InvoiceTemplate, InvoiceTemplateData, TemplateStyle } from "../componen
 import { money, paymentStatus } from "../lib/format";
 import { EmptyCell } from "../components/Empty";
 import { Pagination } from "../components/Pagination";
+import { useDebounced } from "../lib/useDebounced";
 
 export function InvoicesPage() {
   const { activeCompanyId, activeCompany } = useCompany();
@@ -23,11 +24,16 @@ export function InvoicesPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [search, setSearch] = useState("");
+  const q = useDebounced(search.trim());
   const ccy = activeCompany?.base_currency ?? "USD";
 
   const { data, isLoading } = useQuery({
-    queryKey: ["invoices", activeCompanyId, page, pageSize],
-    queryFn: () => api.get<Paginated<SalesInvoice>>(`/invoices?page=${page}&page_size=${pageSize}`),
+    queryKey: ["invoices", activeCompanyId, page, pageSize, q],
+    queryFn: () =>
+      api.get<Paginated<SalesInvoice>>(
+        `/invoices?page=${page}&page_size=${pageSize}` + (q ? `&q=${encodeURIComponent(q)}` : ""),
+      ),
     enabled: !!activeCompanyId,
   });
   const { data: warehouses } = useQuery({
@@ -71,9 +77,18 @@ export function InvoicesPage() {
     <div>
       <div className="page-head">
         <h1>Sales Invoices</h1>
-        <button className="primary" onClick={() => { setEditId(null); setEditorOpen(true); }}>
-          + New invoice
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="search"
+            placeholder="Search invoice #…"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            style={{ width: 220 }}
+          />
+          <button className="primary" onClick={() => { setEditId(null); setEditorOpen(true); }}>
+            + New invoice
+          </button>
+        </div>
       </div>
       <div className="card">
         {isLoading ? (
@@ -188,7 +203,6 @@ function InvoiceEditor({
   const { data: valuation } = useQuery({ queryKey: ["reports", "valuation", companyId], queryFn: () => api.get<{ item_id: string; quantity: string }[]>("/reports/inventory-valuation") });
   const onHand = (itemId: string) => Number(valuation?.find((v) => v.item_id === itemId)?.quantity ?? 0);
   const foreign = docCurrency !== currency;
-  useEffect(() => { if (!locationId && warehouses?.length) setLocationId(warehouses[0].id); }, [warehouses, locationId]);
   // Prefill T&C from the company default for new invoices (until the user edits it).
   useEffect(() => {
     if (!invoiceId && !termsTouched && !terms && activeCompany?.invoice_terms) setTerms(activeCompany.invoice_terms);
@@ -231,7 +245,7 @@ function InvoiceEditor({
   const save = useMutation({
     mutationFn: (thenPost: boolean) => {
       const body = {
-        company_id: companyId, customer_id: customerId, location_id: locationId || undefined,
+        company_id: companyId, customer_id: customerId, location_id: locationId,
         invoice_date: invoiceDate, due_date: dueDate || undefined, notes: notes || undefined,
         currency: docCurrency, fx_rate: foreign ? String(Number(fxRate) || 1) : "1",
         discount_total: String(Number(discount) || 0), shipping_total: String(Number(shipping) || 0),
@@ -296,8 +310,8 @@ function InvoiceEditor({
           </div>
           {error && <div className="error">{error}</div>}
           <div className="modal-actions">
-            <button disabled={!customerId || save.isPending || fxRateInvalid(currency, docCurrency, fxRate)} onClick={() => save.mutate(false)}>Save draft</button>
-            <button className="primary" disabled={!customerId || save.isPending || fxRateInvalid(currency, docCurrency, fxRate)} onClick={() => save.mutate(true)}>
+            <button disabled={!customerId || !locationId || save.isPending || fxRateInvalid(currency, docCurrency, fxRate)} onClick={() => save.mutate(false)}>Save draft</button>
+            <button className="primary" disabled={!customerId || !locationId || save.isPending || fxRateInvalid(currency, docCurrency, fxRate)} onClick={() => save.mutate(true)}>
               {save.isPending ? "…" : "Save & Post"}
             </button>
           </div>
@@ -337,8 +351,9 @@ function InvoiceEditor({
             </div>
           )}
           <div className="field">
-            <label>Issue stock from (internal — not shown on the invoice)</label>
+            <label>Warehouse * <span className="muted" style={{ fontWeight: 400 }}>(issue stock from — internal, not shown on the invoice)</span></label>
             <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+              <option value="">Select a warehouse…</option>
               {(warehouses ?? []).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </div>
@@ -379,9 +394,9 @@ function InvoiceEditor({
           {error && <div className="error">{error}</div>}
           <div className="modal-actions">
             <button onClick={onClose}>Cancel</button>
-            <button disabled={!customerId} onClick={() => setPreview(true)}>Preview →</button>
-            <button disabled={!customerId || save.isPending || fxRateInvalid(currency, docCurrency, fxRate)} onClick={() => save.mutate(false)}>Save draft</button>
-            <button className="primary" disabled={!customerId || save.isPending || fxRateInvalid(currency, docCurrency, fxRate)} onClick={() => save.mutate(true)}>
+            <button disabled={!customerId || !locationId} onClick={() => setPreview(true)}>Preview →</button>
+            <button disabled={!customerId || !locationId || save.isPending || fxRateInvalid(currency, docCurrency, fxRate)} onClick={() => save.mutate(false)}>Save draft</button>
+            <button className="primary" disabled={!customerId || !locationId || save.isPending || fxRateInvalid(currency, docCurrency, fxRate)} onClick={() => save.mutate(true)}>
               {save.isPending ? "…" : "Save & Post"}
             </button>
           </div>

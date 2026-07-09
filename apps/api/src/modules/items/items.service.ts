@@ -28,13 +28,17 @@ import {
 export class ItemsService {
   constructor(@Inject(REQUEST_SUPABASE) private readonly db: SupabaseClient) {}
 
+  /** Columns the items list may be sorted by (guards against arbitrary input). */
+  private static readonly SORTABLE = ["name", "sku", "sale_price", "purchase_price", "created_at"];
+
   async list(companyId: string, query: PaginationQueryDto): Promise<Paginated<Item>> {
     const [from, to] = toRange(query.page, query.page_size);
+    const sort = ItemsService.SORTABLE.includes(query.sort ?? "") ? query.sort! : "name";
     let q = this.db
       .from("items")
       .select("*", { count: "exact" })
       .eq("company_id", companyId)
-      .order("name", { ascending: true })
+      .order(sort, { ascending: query.dir !== "desc" })
       .range(from, to);
 
     if (query.q) q = q.or(`name.ilike.%${query.q}%,sku.ilike.%${query.q}%`);

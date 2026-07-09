@@ -23,21 +23,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
 
   app.setGlobalPrefix(config.globalPrefix);
-  // Allow the configured origins, plus any *.vercel.app deploy and localhost,
-  // so Vercel preview/production URLs never trip CORS.
-  const allowlist = config.corsOrigin.split(",").map((o) => o.trim()).filter(Boolean);
+  // Allow all origins for now (reflects the caller's origin; `true` is required
+  // instead of "*" because credentials are enabled). Tighten later by swapping
+  // this for an allowlist / *.vercel.app check.
   app.enableCors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true); // curl / same-origin / server-to-server
-      let host = "";
-      try { host = new URL(origin).hostname; } catch { /* malformed */ }
-      const ok =
-        allowlist.includes(origin) ||
-        host === "localhost" ||
-        host === "127.0.0.1" ||
-        host.endsWith(".vercel.app");
-      return cb(ok ? null : new Error(`Origin not allowed by CORS: ${origin}`), ok);
-    },
+    origin: true,
     credentials: true,
   });
 

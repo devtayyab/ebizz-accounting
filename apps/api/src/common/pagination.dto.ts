@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 import { Type } from "class-transformer";
 
 /** Shared list query: pagination + free-text search. */
@@ -23,6 +23,16 @@ export class PaginationQueryDto {
   @IsOptional()
   @IsString()
   q?: string;
+
+  @ApiPropertyOptional({ description: "Column to sort by (whitelisted per module)" })
+  @IsOptional()
+  @IsString()
+  sort?: string;
+
+  @ApiPropertyOptional({ description: "Sort direction", enum: ["asc", "desc"] })
+  @IsOptional()
+  @IsIn(["asc", "desc"])
+  dir?: "asc" | "desc";
 }
 
 /** Converts a 1-based page into a Postgres range [from, to]. */

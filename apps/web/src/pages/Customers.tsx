@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Customer, Paginated } from "@ebizz/shared";
 import { api, ApiError } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
+import { useConfirm } from "../state/ConfirmContext";
 import { Modal } from "../components/Modal";
 import { EmptyCell } from "../components/Empty";
 import { Pagination } from "../components/Pagination";
@@ -12,6 +13,7 @@ type FormState = Partial<Customer> & { name: string };
 export function CustomersPage() {
   const { activeCompanyId } = useCompany();
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState<Customer | null>(null);
   const [creating, setCreating] = useState(false);
   const [page, setPage] = useState(1);
@@ -28,6 +30,13 @@ export function CustomersPage() {
     mutationFn: (id: string) => api.delete(`/customers/${id}`),
     onSuccess: invalidate,
   });
+  const askDelete = (c: Customer) =>
+    confirm({
+      title: "Delete customer",
+      message: `Delete “${c.name}”? They will move to the Recycle Bin.`,
+      confirmLabel: "Delete",
+      danger: true,
+    }).then((ok) => ok && remove.mutate(c.id));
 
   return (
     <div>
@@ -69,7 +78,7 @@ export function CustomersPage() {
                     <button className="link" onClick={() => setEditing(c)}>
                       Edit
                     </button>
-                    <button className="link danger" onClick={() => remove.mutate(c.id)}>
+                    <button className="link danger" onClick={() => askDelete(c)}>
                       Delete
                     </button>
                   </td>
