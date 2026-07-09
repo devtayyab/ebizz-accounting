@@ -1,7 +1,15 @@
 import { money } from "../lib/format";
 
-/** Kept for API compatibility with callers that still pass a template style. */
-export type TemplateStyle = "classic" | "modern";
+export type TemplateStyle = "teal" | "indigo" | "emerald" | "plum" | "slate" | "classic";
+
+export const TEMPLATE_OPTIONS: { value: TemplateStyle; label: string }[] = [
+  { value: "teal", label: "Teal" },
+  { value: "indigo", label: "Indigo" },
+  { value: "emerald", label: "Emerald" },
+  { value: "plum", label: "Plum" },
+  { value: "slate", label: "Slate" },
+  { value: "classic", label: "Classic (serif)" },
+];
 
 export interface TemplateLine {
   name: string;
@@ -56,11 +64,11 @@ const join = (parts: (string | null | undefined)[]) => parts.filter(Boolean).joi
  */
 export function InvoiceTemplate({
   data,
+  template = "teal",
   docLabel = "INVOICE",
   partyLabel = "Invoice issued to",
 }: {
   data: InvoiceTemplateData;
-  /** Accepted but ignored — there is now a single format. */
   template?: TemplateStyle;
   docLabel?: string;
   partyLabel?: string;
@@ -76,7 +84,7 @@ export function InvoiceTemplate({
   const shipping = Number(data.shipping ?? 0);
 
   return (
-    <div className="invoice-doc" style={{ position: "relative" }}>
+    <div className={`invoice-doc tpl-${template}`} style={{ position: "relative" }}>
       {isPaid && <div className="inv-paid-stamp">PAID</div>}
 
       <header className="inv-top">

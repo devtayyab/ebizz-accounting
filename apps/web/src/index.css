@@ -50,117 +50,78 @@ a {
 /* --- two-rail layout --- */
 .app-shell {
   display: grid;
-  grid-template-columns: 64px 210px 1fr;
+  grid-template-columns: 250px 1fr;
   min-height: 100vh;
 }
 
-/* Rail 1 — icon strip */
-.rail-icons {
-  background: #0b1220;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 14px 0;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  overflow: visible;   /* let icon tooltips escape to the right */
-  z-index: 25;         /* above rail-menu so tooltips render on top */
-}
-.rail-brand {
-  margin-bottom: 12px;
-  display: grid;
-  place-items: center;
-}
-.rail-brand-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  display: grid;
-  place-items: center;
-  font-size: 19px;
-  font-weight: 800;
-  color: #fff;
-  background: linear-gradient(135deg, #6d8bff, #3557f6);
-  box-shadow: 0 4px 12px rgba(53, 87, 246, 0.4);
-}
-.rail-brand-logo {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  object-fit: contain;
-  background: #fff;
-  padding: 3px;
-}
-.rail-icon {
-  position: relative;
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  border: none;
-  background: transparent;
-  color: #8794ab;               /* one grey colour */
-  border-radius: 11px;
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-.rail-icon:hover { background: rgba(255, 255, 255, 0.06); color: #cdd6e6; }
-.rail-icon.active { background: rgba(109, 139, 255, 0.18); color: #fff; }
-.rail-icon.active::before {
-  content: ""; position: absolute; left: -10px; top: 10px; bottom: 10px;
-  width: 3px; border-radius: 0 3px 3px 0; background: #6d8bff;
-}
-/* tooltip */
-.rail-icon[data-tip]:hover::after,
-.icon-btn[data-tip]:hover::after {
-
-
-  content: attr(data-tip);
-  position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
-  background: #0b1220; color: #fff; font-size: 12px; font-weight: 600;
-  padding: 5px 9px; border-radius: 6px; white-space: nowrap; z-index: 60;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); pointer-events: none;
-}
-.icon-btn[data-tip]:hover::after { left: auto; right: 0; top: calc(100% + 8px); transform: none; }
-
-/* Rail 2 — section menu */
-.rail-menu {
+/* Single sidebar with labelled sections (always visible) */
+.sidebar {
   background: #0f172a;
   color: #cbd5e1;
-  padding: 18px 12px;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  padding: 14px 12px 24px;
   position: sticky;
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  z-index: 25;
 }
-.rail-menu-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: #64748b;
-  padding: 4px 12px 12px;
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 6px;
 }
-.rail-menu a {
+.sidebar-mark {
+  width: 40px; height: 40px; border-radius: 11px;
+  display: grid; place-items: center;
+  font-size: 19px; font-weight: 800; color: #fff; flex-shrink: 0;
+  background: linear-gradient(135deg, #6d8bff, #3557f6);
+  box-shadow: 0 4px 12px rgba(53, 87, 246, 0.4);
+}
+.sidebar-logo {
+  width: 40px; height: 40px; border-radius: 11px;
+  object-fit: contain; background: #fff; padding: 3px; flex-shrink: 0;
+}
+.sidebar-brand-name { font-weight: 700; color: #fff; font-size: 14.5px; line-height: 1.2; }
+.sidebar-brand-sub { font-size: 12px; color: #64748b; }
+.nav-section { margin-top: 8px; }
+.nav-section-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: #64748b; padding: 8px 10px 4px;
+}
+.nav-section-title svg { width: 15px; height: 15px; }
+.sidebar a {
   display: block;
   color: #cbd5e1;
-  padding: 9px 12px;
+  padding: 8px 12px 8px 33px;
   border-radius: 8px;
   font-size: 13.5px;
   border-left: 3px solid transparent;
   transition: background 0.12s ease, color 0.12s ease;
 }
-.rail-menu a:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
-.rail-menu a.active {
+.sidebar a:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.sidebar a.active {
   background: rgba(109, 139, 255, 0.16);
   color: #fff;
   border-left-color: #6d8bff;
   font-weight: 600;
+}
+.sidebar-backdrop { display: none; }
+.sidebar-toggle { display: none; }
+
+/* tooltip (topbar icon buttons) */
+.icon-btn[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute; right: 0; top: calc(100% + 8px);
+  background: #0b1220; color: #fff; font-size: 12px; font-weight: 600;
+  padding: 5px 9px; border-radius: 6px; white-space: nowrap; z-index: 60;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); pointer-events: none;
 }
 
 .app-main { min-width: 0; }
@@ -661,11 +622,32 @@ a.activity-row:hover { background: var(--hover); }
 .activity-amount { font-weight: 600; }
 
 /* --- printable invoice --- */
+/* Always a white sheet with dark text, independent of the app light/dark theme. */
 .invoice-doc {
+  --inv-accent: #2b5f6b;
   max-width: 820px;
   margin: 0 auto;
+  background: #ffffff;
   color: #1f2937;
+  padding: 40px 44px;
+  border-radius: 12px;
 }
+.invoice-doc .inv-company { color: #0f172a; }
+.invoice-doc .inv-party-name { color: #0f172a; }
+.invoice-doc .inv-table tbody td { color: #1f2937; }
+.invoice-doc .inv-totals > div { color: #1f2937; }
+
+/* Template accents (all keep the white sheet; only the accent + type change). */
+.tpl-teal    { --inv-accent: #2b5f6b; }
+.tpl-indigo  { --inv-accent: #4f46e5; }
+.tpl-emerald { --inv-accent: #0f766e; }
+.tpl-plum    { --inv-accent: #7c3aed; }
+.tpl-slate   { --inv-accent: #334155; }
+.tpl-classic { --inv-accent: #1f2937; font-family: Georgia, "Times New Roman", serif; }
+.tpl-classic .inv-metabox,
+.tpl-classic .inv-table thead th,
+.tpl-classic .inv-balance { border-radius: 0; }
+.tpl-classic .inv-top { border-bottom: 3px double var(--inv-accent); }
 .inv-top {
   display: flex;
   justify-content: space-between;
@@ -687,10 +669,11 @@ a.activity-row:hover { background: var(--hover); }
   flex-shrink: 0;
 }
 .inv-logo-img {
-  width: 64px;
-  height: 64px;
+  height: 56px;
+  max-width: 180px;      /* let wide/wordmark logos keep their aspect ratio */
+  width: auto;
   object-fit: contain;
-  border-radius: 10px;
+  object-position: left center;
   background: #fff;
   flex-shrink: 0;
 }
@@ -804,11 +787,13 @@ a.activity-row:hover { background: var(--hover); }
 .inv-logo { background: var(--inv-accent, #2b5f6b); }
 
 @media print {
-  .rail-icons, .rail-menu, .topbar, .no-print { display: none !important; }
+  .sidebar, .sidebar-toggle, .sidebar-backdrop, .topbar, .no-print { display: none !important; }
   .app-shell { display: block; }
   .content { padding: 0; }
   .card, .invoice-doc { border: none; box-shadow: none; padding: 0; }
   body { background: #fff; }
+  /* keep template colours (teal boxes, headers) when printing */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }
 
 /* ===== UX polish pass ===== */
@@ -834,21 +819,21 @@ td { vertical-align: middle; }
 button.link { font-size: 13px; white-space: nowrap; }
 td .link + .link, td .link + a.link, td a.link + .link { margin-left: 6px; }
 
-/* responsive: collapse sidebar on narrow screens */
+/* responsive: sidebar becomes a slide-in drawer on narrow screens */
 @media (max-width: 860px) {
-  .app-shell { grid-template-columns: 56px 1fr; }
-  .rail-icons { padding: 12px 0; }
-  /* On narrow screens the section menu collapses into a horizontal strip. */
-  .rail-menu {
-    position: static; height: auto; flex-direction: row; flex-wrap: wrap;
-    align-items: center; gap: 4px; padding: 8px 10px;
-    grid-column: 1 / -1; grid-row: 2;
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar {
+    position: fixed; left: 0; top: 0; width: 250px; z-index: 45;
+    transform: translateX(-100%); transition: transform 0.2s ease;
   }
-  .app-shell { grid-template-areas: "rail main" "menu menu"; grid-template-columns: 56px 1fr; }
-  .rail-icons { grid-area: rail; }
-  .app-main { grid-area: main; }
-  .rail-menu { grid-area: menu; }
-  .rail-menu-title { display: none; }
+  .sidebar.open { transform: translateX(0); box-shadow: 0 0 30px rgba(0,0,0,0.4); }
+  .sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.4); }
+  .sidebar-toggle {
+    display: grid; place-items: center; position: fixed; left: 12px; top: 10px; z-index: 30;
+    width: 40px; height: 40px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); cursor: pointer;
+  }
+  .topbar { padding-left: 64px; }
   .grid-2 { grid-template-columns: 1fr; }
   .dash-grid { grid-template-columns: 1fr; }
   .guide { position: static; }
