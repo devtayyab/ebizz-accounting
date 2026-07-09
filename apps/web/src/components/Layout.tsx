@@ -43,65 +43,48 @@ const NAV_GROUPS: NavGroup[] = [
   ] },
 ];
 
-/** Which group owns the current path (longest matching item wins). */
-function groupForPath(pathname: string): string {
-  let best = NAV_GROUPS[0].key;
-  let bestLen = -1;
-  for (const g of NAV_GROUPS) {
-    for (const it of g.items) {
-      const match = it.to === "/" ? pathname === "/" : pathname.startsWith(it.to);
-      if (match && it.to.length > bestLen) { best = g.key; bestLen = it.to.length; }
-    }
-  }
-  return best;
-}
 
 export function Layout({ children }: { children: ReactNode }) {
   const { user, signOut } = useAuth();
   const { companies, activeCompany, activeCompanyId, setActiveCompanyId } = useCompany();
   const { theme, toggle } = useTheme();
   const location = useLocation();
-  const [activeGroup, setActiveGroup] = useState(() => groupForPath(location.pathname));
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
 
-  // Keep the rails in sync with the current route (e.g. after navigating).
-  useEffect(() => { setActiveGroup(groupForPath(location.pathname)); }, [location.pathname]);
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
-  const group = NAV_GROUPS.find((g) => g.key === activeGroup) ?? NAV_GROUPS[0];
   const email = user?.email ?? "";
 
   return (
     <div className="app-shell">
-      {/* Rail 1 — icons */}
-      <nav className="rail-icons" aria-label="Sections">
-        <div className="rail-brand" title={activeCompany?.name ?? "Ebizz"}>
+      {/* Single always-visible sidebar with labelled sections */}
+      <nav className={`sidebar ${mobileOpen ? "open" : ""}`} aria-label="Main navigation">
+        <div className="sidebar-brand">
           {activeCompany?.logo_url
-            ? <img src={activeCompany.logo_url} alt="" className="rail-brand-logo" />
-            : <span className="rail-brand-mark">E</span>}
+            ? <img src={activeCompany.logo_url} alt="" className="sidebar-logo" />
+            : <span className="sidebar-mark">{(activeCompany?.name ?? "E").charAt(0).toUpperCase()}</span>}
+          <div className="sidebar-brand-text">
+            <div className="sidebar-brand-name">{activeCompany?.name ?? "Ebizz"}</div>
+            <div className="sidebar-brand-sub">{activeCompany?.base_currency ?? ""}</div>
+          </div>
         </div>
         {NAV_GROUPS.map((g) => (
-          <button
-            key={g.key}
-            className={`rail-icon ${activeGroup === g.key ? "active" : ""}`}
-            onClick={() => setActiveGroup(g.key)}
-            data-tip={g.tip ?? g.label}
-            title={g.tip ?? g.label}
-            aria-label={g.tip ?? g.label}
-          >
-            <Icon name={g.icon} />
-          </button>
+          <div className="nav-section" key={g.key}>
+            <div className="nav-section-title"><Icon name={g.icon} size={15} /> {g.label}</div>
+            {g.items.map((it) => (
+              <NavLink key={it.to} to={it.to} end={it.end}>{it.label}</NavLink>
+            ))}
+          </div>
         ))}
       </nav>
-
-      {/* Rail 2 — items of the selected section */}
-      <nav className="rail-menu" aria-label={group.label}>
-        <div className="rail-menu-title">{group.label}</div>
-        {group.items.map((it) => (
-          <NavLink key={it.to} to={it.to} end={it.end}>{it.label}</NavLink>
-        ))}
-      </nav>
+      {mobileOpen && <div className="sidebar-backdrop" onClick={() => setMobileOpen(false)} />}
 
       <div className="app-main">
+        <button className="sidebar-toggle" onClick={() => setMobileOpen((v) => !v)} aria-label="Menu">
+          <Icon name="dashboard" size={18} />
+        </button>
         <header className="topbar">
           <div className="topbar-co">
             <strong>{activeCompany?.name ?? "—"}</strong>

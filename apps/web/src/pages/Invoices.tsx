@@ -11,7 +11,7 @@ import { useConfirm } from "../state/ConfirmContext";
 import { Modal } from "../components/Modal";
 import { EditableLine, LineItemsEditor, emptyLine, lineTotals } from "../components/LineItemsEditor";
 import { fxRateInvalid } from "../components/CurrencyRate";
-import { InvoiceTemplate, InvoiceTemplateData } from "../components/InvoiceTemplate";
+import { InvoiceTemplate, InvoiceTemplateData, TemplateStyle, TEMPLATE_OPTIONS } from "../components/InvoiceTemplate";
 import { money, paymentStatus, taxBreakdown } from "../lib/format";
 import { EmptyCell } from "../components/Empty";
 import { Pagination } from "../components/Pagination";
@@ -369,6 +369,7 @@ function InvoiceEditor({
   const [terms, setTerms] = useState("");
   const [termsTouched, setTermsTouched] = useState(false);
   const [preview, setPreview] = useState(false);
+  const [template, setTemplate] = useState<TemplateStyle>("teal");
   const [error, setError] = useState<string | null>(null);
 
   const { data: customers } = useQuery({ queryKey: ["customers", "all"], queryFn: () => api.get<Paginated<Customer>>("/customers?page=1&page_size=200") });
@@ -501,9 +502,15 @@ function InvoiceEditor({
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <button onClick={() => setPreview(false)}>← Back to edit</button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <label style={{ margin: 0 }}>Template</label>
+              <select value={template} onChange={(e) => setTemplate(e.target.value as TemplateStyle)} style={{ width: 150 }}>
+                {TEMPLATE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
           </div>
-          <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 20 }}>
-            <InvoiceTemplate data={previewData} />
+          <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 20, background: "#e5e7eb" }}>
+            <InvoiceTemplate data={previewData} template={template} />
           </div>
           {error && <div className="error">{error}</div>}
           <div className="modal-actions">

@@ -1,14 +1,16 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import type { Item, Paginated, PurchaseBill, Supplier, TaxRate } from "@ebizz/shared";
 import { api } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
-import { InvoiceTemplate, InvoiceTemplateData, TemplateLine } from "../components/InvoiceTemplate";
+import { InvoiceTemplate, InvoiceTemplateData, TemplateLine, TemplateStyle, TEMPLATE_OPTIONS } from "../components/InvoiceTemplate";
 import { taxBreakdown } from "../lib/format";
 
 export function BillView() {
   const { id } = useParams();
   const { activeCompany } = useCompany();
+  const [template, setTemplate] = useState<TemplateStyle>("slate");
 
   const { data: bill } = useQuery({
     queryKey: ["bill", id], queryFn: () => api.get<PurchaseBill>(`/bills/${id}`), enabled: !!id,
@@ -59,10 +61,16 @@ export function BillView() {
     <div>
       <div className="page-head no-print">
         <Link to="/bills"><button>← Back</button></Link>
-        <button className="primary" onClick={() => window.print()}>Print / Save PDF</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <label style={{ margin: 0 }}>Template</label>
+          <select value={template} onChange={(e) => setTemplate(e.target.value as TemplateStyle)} style={{ width: 150 }}>
+            {TEMPLATE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          <button className="primary" onClick={() => window.print()}>Print / Save PDF</button>
+        </div>
       </div>
       <div className="card">
-        <InvoiceTemplate data={data} docLabel="PURCHASE BILL" partyLabel="Supplier" />
+        <InvoiceTemplate data={data} template={template} docLabel="PURCHASE BILL" partyLabel="Supplier" />
       </div>
     </div>
   );
