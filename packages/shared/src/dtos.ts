@@ -454,6 +454,18 @@ export interface Expense {
   created_at: string;
 }
 
+export interface InvoiceDocument {
+  id: string;
+  organization_id: string;
+  company_id: string;
+  invoice_id: string | null;
+  name: string;
+  mime: string | null;
+  size: number | null;
+  storage_path: string;
+  created_at: string;
+}
+
 export interface StatementRow {
   txn_date: string;
   party_id: string;

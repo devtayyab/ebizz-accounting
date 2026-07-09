@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Customer, Item, Paginated, SalesInvoice, TaxRate } from "@ebizz/shared";
+import type { Customer, InvoiceDocument, Item, Paginated, SalesInvoice, TaxRate } from "@ebizz/shared";
+import { supabase } from "../lib/supabase";
 
 interface WarehouseOption { id: string; name: string }
 import { api, ApiError } from "../lib/api";
@@ -64,6 +65,7 @@ export function InvoicesPage() {
     onSuccess: invalidate, meta: { successMessage: "Invoice restored" },
   });
   const [payFor, setPayFor] = useState<SalesInvoice | null>(null);
+  const [docsFor, setDocsFor] = useState<SalesInvoice | null>(null);
   const revise = useMutation({
     mutationFn: (id: string) => api.post(`/invoices/${id}/revise`),
     onSuccess: (_data, id) => { invalidate(); setEditId(id); setEditorOpen(true); },
@@ -119,6 +121,7 @@ export function InvoicesPage() {
                         </>
                       )}
                       <Link className="link" to={`/invoices/${inv.id}/print`} style={{ marginLeft: 6 }}>View</Link>
+                      <button className="link" onClick={() => setDocsFor(inv)}>Files</button>
                       {inv.status === "posted" && Number(inv.amount_paid) === 0 && (
                         <button className="link" onClick={() => ask({ title: "Edit posted invoice", message: `Editing ${inv.invoice_number} will un-post it (reverse its ledger entry) so you can change it, then re-post.`, confirmLabel: "Un-post & edit" }).then((ok) => ok && revise.mutate(inv.id))}>Edit</button>
                       )}
@@ -158,7 +161,88 @@ export function InvoicesPage() {
       {payFor && (
         <PaymentModal invoice={payFor} onClose={() => setPayFor(null)} onSaved={() => { invalidate(); setPayFor(null); }} />
       )}
+      {docsFor && <DocumentsModal invoice={docsFor} onClose={() => setDocsFor(null)} />}
     </div>
+  );
+}
+
+const BUCKET = "invoice-docs";
+const safeName = (n: string) => n.replace(/[^a-zA-Z0-9._-]/g, "_");
+
+/** Upload / view / download / delete files attached to an invoice. */
+function DocumentsModal({ invoice, onClose }: { invoice: SalesInvoice; onClose: () => void }) {
+  const qc = useQueryClient();
+  const ask = useConfirm();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const key = ["documents", invoice.id];
+  const { data: docs, isLoading } = useQuery({
+    queryKey: key,
+    queryFn: () => api.get<InvoiceDocument[]>(`/invoices/${invoice.id}/documents`),
+  });
+  const refresh = () => qc.invalidateQueries({ queryKey: key });
+
+  const onUpload = async (file: File) => {
+    setError(null);
+    setBusy(true);
+    try {
+      const path = `${invoice.organization_id}/${invoice.id}/${crypto.randomUUID()}-${safeName(file.name)}`;
+      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: false });
+      if (upErr) throw upErr;
+      await api.post(`/invoices/${invoice.id}/documents`, {
+        name: file.name, storage_path: path, mime: file.type || undefined, size: file.size,
+      });
+      refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const download = async (d: InvoiceDocument) => {
+    const { data, error: sErr } = await supabase.storage.from(BUCKET).createSignedUrl(d.storage_path, 120);
+    if (sErr || !data) { setError(sErr?.message ?? "Could not create download link"); return; }
+    window.open(data.signedUrl, "_blank", "noopener");
+  };
+
+  const remove = async (d: InvoiceDocument) => {
+    if (!(await ask({ title: "Delete file", message: `Delete “${d.name}”?`, confirmLabel: "Delete", danger: true }))) return;
+    await supabase.storage.from(BUCKET).remove([d.storage_path]);
+    await api.delete(`/documents/${d.id}`);
+    refresh();
+  };
+
+  const fmtSize = (n: number | null) => (n == null ? "" : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+
+  return (
+    <Modal title={`Documents — ${invoice.invoice_number}`} onClose={onClose} width={560}>
+      <p className="muted" style={{ marginTop: 0 }}>Attach POs, delivery notes, receipts, or any file related to this invoice.</p>
+      <label className="primary" style={{ display: "inline-block", cursor: busy ? "wait" : "pointer", padding: "8px 14px", borderRadius: 8 }}>
+        {busy ? "Uploading…" : "+ Upload file"}
+        <input type="file" style={{ display: "none" }} disabled={busy}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); e.target.value = ""; }} />
+      </label>
+      {error && <div className="error" style={{ marginTop: 10 }}>{error}</div>}
+      <table style={{ marginTop: 14 }}>
+        <thead><tr><th>Name</th><th>Size</th><th /></tr></thead>
+        <tbody>
+          {isLoading ? <tr><td colSpan={3} className="muted">Loading…</td></tr>
+            : (docs ?? []).map((d) => (
+              <tr key={d.id}>
+                <td>{d.name}</td>
+                <td className="muted">{fmtSize(d.size)}</td>
+                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                  <button className="link" onClick={() => download(d)}>Download</button>
+                  <button className="link danger" onClick={() => remove(d)}>Delete</button>
+                </td>
+              </tr>
+            ))}
+          {!isLoading && docs?.length === 0 && <tr><td colSpan={3}><EmptyCell>No files attached yet.</EmptyCell></td></tr>}
+        </tbody>
+      </table>
+    </Modal>
   );
 }
 
