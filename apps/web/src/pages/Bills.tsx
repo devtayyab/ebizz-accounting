@@ -13,6 +13,7 @@ import { fxRateInvalid } from "../components/CurrencyRate";
 import { money, paymentStatus } from "../lib/format";
 import { EmptyCell } from "../components/Empty";
 import { Pagination } from "../components/Pagination";
+import { ExportButtons } from "../components/ExportButtons";
 
 export function BillsPage() {
   const { activeCompanyId, activeCompany } = useCompany();
@@ -56,7 +57,22 @@ export function BillsPage() {
     <div>
       <div className="page-head">
         <h1>Purchase Bills</h1>
-        <button className="primary" onClick={() => { setEditId(null); setEditorOpen(true); }}>+ New bill</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={data?.data ?? []}
+            filename="bills"
+            title="Purchase Bills"
+            columns={[
+              { header: "Number", value: (b) => b.bill_number },
+              { header: "Date", value: (b) => b.bill_date },
+              { header: "Currency", value: (b) => b.currency },
+              { header: "Total", value: (b) => Number(b.total) },
+              { header: "Paid", value: (b) => Number(b.amount_paid) },
+              { header: "Status", value: (b) => b.status },
+            ]}
+          />
+          <button className="primary" onClick={() => { setEditId(null); setEditorOpen(true); }}>+ New bill</button>
+        </div>
       </div>
       <div className="card">
         {isLoading ? <p className="muted">Loading…</p> : (

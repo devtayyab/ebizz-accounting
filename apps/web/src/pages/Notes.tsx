@@ -5,6 +5,7 @@ import type { Customer, Item, Paginated, Supplier, TaxRate } from "@ebizz/shared
 interface WarehouseOption { id: string; name: string }
 import { api, ApiError } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
+import { useConfirm } from "../state/ConfirmContext";
 import { Modal } from "../components/Modal";
 import { EditableLine, LineItemsEditor, emptyLine, lineTotals } from "../components/LineItemsEditor";
 import { CurrencyRate, fxRateInvalid } from "../components/CurrencyRate";
@@ -26,6 +27,7 @@ export function DebitNotesPage() { return <NotesPage kind="debit" />; }
 function NotesPage({ kind }: { kind: "credit" | "debit" }) {
   const { activeCompanyId, activeCompany } = useCompany();
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const ccy = activeCompany?.base_currency ?? "USD";
@@ -65,7 +67,7 @@ function NotesPage({ kind }: { kind: "credit" | "debit" }) {
                         <>
                           <button className="link" onClick={() => { setEditId(n.id); setOpen(true); }}>Edit</button>
                           <button className="link" onClick={() => post.mutate(n.id)}>Post</button>
-                          <button className="link danger" onClick={() => remove.mutate(n.id)}>Delete</button>
+                          <button className="link danger" onClick={() => confirm({ title: "Delete note", message: `Delete ${n.note_number}?`, confirmLabel: "Delete", danger: true }).then((ok) => ok && remove.mutate(n.id))}>Delete</button>
                         </>
                       )}
                     </td>

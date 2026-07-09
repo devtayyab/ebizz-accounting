@@ -8,6 +8,7 @@ import { Modal } from "../components/Modal";
 import { CurrencyRate, fxRateInvalid } from "../components/CurrencyRate";
 import { money } from "../lib/format";
 import { EmptyCell } from "../components/Empty";
+import { ExportButtons } from "../components/ExportButtons";
 
 export function ExpensesPage() {
   const { activeCompanyId, activeCompany } = useCompany();
@@ -50,7 +51,23 @@ export function ExpensesPage() {
     <div>
       <div className="page-head">
         <h1>Expenses</h1>
-        <button className="primary" onClick={() => setCreating(true)}>+ Record expense</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={data ?? []}
+            filename="expenses"
+            title="Expenses"
+            columns={[
+              { header: "Date", value: (e) => e.expense_date },
+              { header: "Category", value: (e) => acctName(e.category_account_id) },
+              { header: "Memo", value: (e) => e.memo ?? "" },
+              { header: "Amount", value: (e) => Number(e.amount) },
+              { header: "Tax", value: (e) => Number(e.tax_amount) },
+              { header: "Total", value: (e) => Number(e.total) },
+              { header: "Status", value: (e) => e.payment_status },
+            ]}
+          />
+          <button className="primary" onClick={() => setCreating(true)}>+ Record expense</button>
+        </div>
       </div>
       <div className="card">
         <p className="muted" style={{ marginTop: 0 }}>

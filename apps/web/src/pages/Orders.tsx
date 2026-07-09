@@ -5,6 +5,7 @@ import type { Customer, Item, Paginated, Supplier, TaxRate } from "@ebizz/shared
 interface WarehouseOption { id: string; name: string }
 import { api, ApiError } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
+import { useConfirm } from "../state/ConfirmContext";
 import { Modal } from "../components/Modal";
 import { EditableLine, LineItemsEditor, emptyLine, lineTotals } from "../components/LineItemsEditor";
 import { CurrencyRate, fxRateInvalid } from "../components/CurrencyRate";
@@ -28,6 +29,7 @@ export function PurchaseOrdersPage() { return <OrdersPage kind="purchase" />; }
 function OrdersPage({ kind }: { kind: "sales" | "purchase" }) {
   const { activeCompanyId, activeCompany } = useCompany();
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   const ccy = activeCompany?.base_currency ?? "USD";
   const base = kind === "sales" ? "/sales-orders" : "/purchase-orders";
@@ -69,7 +71,7 @@ function OrdersPage({ kind }: { kind: "sales" | "purchase" }) {
                         <button className="link" onClick={() => convert.mutate(o.id)}>
                           Convert to {kind === "sales" ? "invoice" : "bill"}
                         </button>
-                        <button className="link danger" onClick={() => remove.mutate(o.id)}>Delete</button>
+                        <button className="link danger" onClick={() => confirm({ title: "Delete order", message: `Delete ${o.order_number}?`, confirmLabel: "Delete", danger: true }).then((ok) => ok && remove.mutate(o.id))}>Delete</button>
                       </>
                     )}
                   </td>

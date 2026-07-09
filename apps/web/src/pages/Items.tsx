@@ -17,6 +17,7 @@ import { EmptyCell } from "../components/Empty";
 import { Pagination } from "../components/Pagination";
 import { useDebounced } from "../lib/useDebounced";
 import { SortHeader } from "../components/SortHeader";
+import { ExportButtons } from "../components/ExportButtons";
 
 interface Location {
   id: string;
@@ -78,6 +79,20 @@ export function ItemsPage() {
       <div className="page-head">
         <h1>Items &amp; Inventory</h1>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={data?.data ?? []}
+            filename="items"
+            title="Items & Inventory"
+            columns={[
+              { header: "SKU", value: (i) => i.sku },
+              { header: "Name", value: (i) => i.name },
+              { header: "Type", value: (i) => i.type },
+              { header: "Unit", value: (i) => i.unit },
+              { header: "Purchase price", value: (i) => i.purchase_price ?? "" },
+              { header: "Sale price", value: (i) => i.sale_price ?? "" },
+              { header: "On hand", value: (i) => (i.track_inventory ? Number(onHand(i.id) ?? 0) : "") },
+            ]}
+          />
           <input
             type="search"
             placeholder="Search name or SKU…"

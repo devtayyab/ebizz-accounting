@@ -16,6 +16,7 @@ import { money, paymentStatus, taxBreakdown } from "../lib/format";
 import { EmptyCell } from "../components/Empty";
 import { Pagination } from "../components/Pagination";
 import { useDebounced } from "../lib/useDebounced";
+import { ExportButtons } from "../components/ExportButtons";
 
 export function InvoicesPage() {
   const { activeCompanyId, activeCompany } = useCompany();
@@ -77,6 +78,20 @@ export function InvoicesPage() {
       <div className="page-head">
         <h1>Sales Invoices</h1>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={data?.data ?? []}
+            filename="invoices"
+            title="Sales Invoices"
+            columns={[
+              { header: "Number", value: (i) => i.invoice_number },
+              { header: "Date", value: (i) => i.invoice_date },
+              { header: "Warehouse", value: (i) => whName(i.location_id) },
+              { header: "Currency", value: (i) => i.currency },
+              { header: "Total", value: (i) => Number(i.total) },
+              { header: "Paid", value: (i) => Number(i.amount_paid) },
+              { header: "Status", value: (i) => i.status },
+            ]}
+          />
           <input
             type="search"
             placeholder="Search invoice #…"

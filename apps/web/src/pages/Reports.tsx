@@ -6,6 +6,7 @@ import type {
 import { api } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
 import { money } from "../lib/format";
+import { ExportButtons } from "../components/ExportButtons";
 
 const TABS = [
   { key: "pnl", label: "Profit & Loss" },
@@ -229,16 +230,22 @@ function TaxSummary({ ccy }: { ccy: string }) {
   });
   if (isLoading || !data) return <p className="muted">Loading…</p>;
   return (
-    <table>
-      <tbody>
-        {data.map((r, i) => (
-          <tr key={i} style={i === data.length - 1 ? { fontWeight: 700, borderTop: "2px solid var(--border)" } : undefined}>
-            <td>{r.label}</td>
-            <td style={{ textAlign: "right" }}>{money(r.amount, ccy)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      <div style={{ textAlign: "right", marginBottom: 8 }}>
+        <ExportButtons rows={data} filename="tax-summary" title="Tax Summary"
+          columns={[{ header: "Item", value: (r) => r.label }, { header: `Amount (${ccy})`, value: (r) => Number(r.amount) }]} />
+      </div>
+      <table>
+        <tbody>
+          {data.map((r, i) => (
+            <tr key={i} style={i === data.length - 1 ? { fontWeight: 700, borderTop: "2px solid var(--border)" } : undefined}>
+              <td>{r.label}</td>
+              <td style={{ textAlign: "right" }}>{money(r.amount, ccy)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   );
 }
 
@@ -252,6 +259,18 @@ function DayBook({ ccy }: { ccy: string }) {
   });
   if (isLoading || !data) return <p className="muted">Loading…</p>;
   return (
+    <>
+      <div style={{ textAlign: "right", marginBottom: 8 }}>
+        <ExportButtons rows={data} filename="day-book" title="Day Book"
+          columns={[
+            { header: "Date", value: (r) => r.entry_date },
+            { header: "Memo", value: (r) => r.memo ?? "" },
+            { header: "Source", value: (r) => r.source_type ?? "" },
+            { header: "Reference", value: (r) => r.reference ?? "" },
+            { header: "Debit", value: (r) => Number(r.debit_total) },
+            { header: "Credit", value: (r) => Number(r.credit_total) },
+          ]} />
+      </div>
     <table>
       <thead><tr><th>Date</th><th>Memo</th><th>Source</th><th>Reference</th><th style={{ textAlign: "right" }}>Debit</th><th style={{ textAlign: "right" }}>Credit</th></tr></thead>
       <tbody>
@@ -268,6 +287,7 @@ function DayBook({ ccy }: { ccy: string }) {
         {data.length === 0 && <tr><td colSpan={6} className="muted">No posted entries.</td></tr>}
       </tbody>
     </table>
+    </>
   );
 }
 
@@ -282,6 +302,20 @@ function Register({ kind, ccy }: { kind: "sales" | "purchase"; ccy: string }) {
   if (isLoading || !data) return <p className="muted">Loading…</p>;
   const totals = data.reduce((a, r) => ({ net: a.net + Number(r.net), tax: a.tax + Number(r.tax), total: a.total + Number(r.total) }), { net: 0, tax: 0, total: 0 });
   return (
+    <>
+    <div style={{ textAlign: "right", marginBottom: 8 }}>
+      <ExportButtons rows={data} filename={`${kind}-register`} title={kind === "sales" ? "Sales Register" : "Purchase Register"}
+        columns={[
+          { header: kind === "sales" ? "Invoice" : "Bill", value: (r) => r.number },
+          { header: "Date", value: (r) => r.doc_date },
+          { header: kind === "sales" ? "Customer" : "Supplier", value: (r) => r.party ?? "" },
+          { header: "Status", value: (r) => r.status },
+          { header: "Currency", value: (r) => r.currency },
+          { header: "Net", value: (r) => Number(r.net) },
+          { header: "Tax", value: (r) => Number(r.tax) },
+          { header: "Total", value: (r) => Number(r.total) },
+        ]} />
+    </div>
     <table>
       <thead><tr><th>{kind === "sales" ? "Invoice" : "Bill"}</th><th>Date</th><th>{kind === "sales" ? "Customer" : "Supplier"}</th><th>Status</th><th style={{ textAlign: "right" }}>Net</th><th style={{ textAlign: "right" }}>Tax</th><th style={{ textAlign: "right" }}>Total</th></tr></thead>
       <tbody>
@@ -305,6 +339,7 @@ function Register({ kind, ccy }: { kind: "sales" | "purchase"; ccy: string }) {
         )}
       </tbody>
     </table>
+    </>
   );
 }
 

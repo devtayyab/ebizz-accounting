@@ -7,6 +7,7 @@ import { useConfirm } from "../state/ConfirmContext";
 import { Modal } from "../components/Modal";
 import { EmptyCell } from "../components/Empty";
 import { Pagination } from "../components/Pagination";
+import { ExportButtons } from "../components/ExportButtons";
 
 type FormState = Partial<Customer> & { name: string };
 
@@ -42,9 +43,23 @@ export function CustomersPage() {
     <div>
       <div className="page-head">
         <h1>Customers</h1>
-        <button className="primary" onClick={() => setCreating(true)}>
-          + New customer
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={data?.data ?? []}
+            filename="customers"
+            title="Customers"
+            columns={[
+              { header: "Name", value: (c) => c.name },
+              { header: "Email", value: (c) => c.email ?? "" },
+              { header: "Currency", value: (c) => c.currency ?? "" },
+              { header: "Credit limit", value: (c) => c.credit_limit ?? "" },
+              { header: "Status", value: (c) => (c.is_active ? "Active" : "Inactive") },
+            ]}
+          />
+          <button className="primary" onClick={() => setCreating(true)}>
+            + New customer
+          </button>
+        </div>
       </div>
 
       <div className="card">
