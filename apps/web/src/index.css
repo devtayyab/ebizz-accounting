@@ -669,10 +669,11 @@ a.activity-row:hover { background: var(--hover); }
   flex-shrink: 0;
 }
 .inv-logo-img {
-  width: 64px;
-  height: 64px;
+  height: 56px;
+  max-width: 180px;      /* let wide/wordmark logos keep their aspect ratio */
+  width: auto;
   object-fit: contain;
-  border-radius: 10px;
+  object-position: left center;
   background: #fff;
   flex-shrink: 0;
 }
