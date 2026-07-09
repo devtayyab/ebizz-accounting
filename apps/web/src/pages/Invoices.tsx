@@ -63,10 +63,7 @@ export function InvoicesPage() {
     mutationFn: (id: string) => api.post(`/invoices/${id}/restore`),
     onSuccess: invalidate, meta: { successMessage: "Invoice restored" },
   });
-  const markPaid = useMutation({
-    mutationFn: (id: string) => api.post(`/invoices/${id}/mark-paid`),
-    onSuccess: invalidate, meta: { successMessage: "Invoice marked as paid" },
-  });
+  const [payFor, setPayFor] = useState<SalesInvoice | null>(null);
   const revise = useMutation({
     mutationFn: (id: string) => api.post(`/invoices/${id}/revise`),
     onSuccess: (_data, id) => { invalidate(); setEditId(id); setEditorOpen(true); },
@@ -126,7 +123,7 @@ export function InvoicesPage() {
                         <button className="link" onClick={() => ask({ title: "Edit posted invoice", message: `Editing ${inv.invoice_number} will un-post it (reverse its ledger entry) so you can change it, then re-post.`, confirmLabel: "Un-post & edit" }).then((ok) => ok && revise.mutate(inv.id))}>Edit</button>
                       )}
                       {inv.status === "posted" && Number(inv.total) - Number(inv.amount_paid) > 0.005 && (
-                        <button className="link" onClick={() => ask({ title: "Mark as paid", message: `Record a payment for the full balance of ${inv.invoice_number} into your default cash/bank account?`, confirmLabel: "Mark paid" }).then((ok) => ok && markPaid.mutate(inv.id))}>Mark paid</button>
+                        <button className="link" onClick={() => setPayFor(inv)}>Receive payment</button>
                       )}
                       {inv.status === "posted" && Number(inv.amount_paid) === 0 && (
                         <button className="link danger" onClick={() => ask({ title: "Void invoice", message: `Void ${inv.invoice_number}? A reversing journal entry will be posted and stock returned.`, confirmLabel: "Void", danger: true }).then((ok) => ok && reverse.mutate(inv.id))}>Void</button>
@@ -158,7 +155,88 @@ export function InvoicesPage() {
           onSaved={() => { invalidate(); setEditorOpen(false); }}
         />
       )}
+      {payFor && (
+        <PaymentModal invoice={payFor} onClose={() => setPayFor(null)} onSaved={() => { invalidate(); setPayFor(null); }} />
+      )}
     </div>
+  );
+}
+
+interface FundOption { id: string; name: string; gl_account_id: string | null }
+
+/**
+ * Receive a payment or deposit for an invoice through a Fund (the "payment type").
+ * Amount can be the full balance, a fixed amount, or a percentage of the total —
+ * covering both "mark paid" and customer-deposit use cases.
+ */
+function PaymentModal({ invoice, onClose, onSaved }: { invoice: SalesInvoice; onClose: () => void; onSaved: () => void }) {
+  const outstanding = Math.round((Number(invoice.total) - Number(invoice.amount_paid)) * 100) / 100;
+  const [fundId, setFundId] = useState("");
+  const [mode, setMode] = useState<"full" | "fixed" | "percent">("full");
+  const [fixed, setFixed] = useState("");
+  const [percent, setPercent] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const { data: funds } = useQuery({ queryKey: ["funds", "all"], queryFn: () => api.get<FundOption[]>("/funds") });
+  const linked = (funds ?? []).filter((f) => f.gl_account_id);
+
+  const amount = mode === "full" ? outstanding
+    : mode === "fixed" ? Math.round((Number(fixed) || 0) * 100) / 100
+    : Math.round(Number(invoice.total) * (Number(percent) || 0) / 100 * 100) / 100;
+  const amountValid = amount > 0 && amount <= outstanding + 0.0049;
+
+  const pay = useMutation({
+    mutationFn: () => api.post(`/invoices/${invoice.id}/receive-payment`, {
+      fund_id: fundId,
+      amount: mode === "full" ? undefined : String(amount),
+    }),
+    onSuccess: onSaved,
+    onError: (e) => setError(e instanceof ApiError ? e.message : "Payment failed"),
+    meta: { successMessage: "Payment recorded" },
+  });
+
+  return (
+    <Modal title={`Receive payment — ${invoice.invoice_number}`} onClose={onClose} width={480}>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Outstanding balance: <strong>{money(outstanding, invoice.currency)}</strong>
+      </p>
+      <div className="field">
+        <label>Payment type (fund) *</label>
+        <select value={fundId} onChange={(e) => setFundId(e.target.value)}>
+          <option value="">Select a fund…</option>
+          {linked.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+        </select>
+        {linked.length === 0 && (
+          <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+            No funds are linked to a cash/bank account yet. Open <strong>Funds &amp; Advances</strong> and link one first.
+          </div>
+        )}
+      </div>
+      <div className="field">
+        <label>Amount</label>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+          {(["full", "fixed", "percent"] as const).map((m) => (
+            <label key={m} style={{ display: "flex", gap: 6, alignItems: "center", margin: 0, fontWeight: 400 }}>
+              <input type="radio" style={{ width: "auto" }} checked={mode === m} onChange={() => setMode(m)} />
+              {m === "full" ? "Full balance" : m === "fixed" ? "Fixed amount" : "Percentage of total"}
+            </label>
+          ))}
+        </div>
+        {mode === "fixed" && <input value={fixed} placeholder="0.00" onChange={(e) => setFixed(e.target.value)} />}
+        {mode === "percent" && <input value={percent} placeholder="e.g. 25" onChange={(e) => setPercent(e.target.value)} />}
+      </div>
+      <div className="fx-note">
+        Will record <strong>{money(amount, invoice.currency)}</strong> against the invoice
+        {mode !== "full" && amount > 0 && amount < outstanding ? " (deposit / part payment)." : "."}
+      </div>
+      {error && <div className="error">{error}</div>}
+      <div className="modal-actions">
+        <button onClick={onClose}>Cancel</button>
+        <button className="primary" disabled={!fundId || !amountValid || pay.isPending} onClick={() => pay.mutate()}>
+          {pay.isPending ? "…" : "Record payment"}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

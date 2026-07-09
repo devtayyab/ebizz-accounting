@@ -10,18 +10,22 @@ import { AuthGuard } from "../../auth/auth.guard";
 import { CompanyId } from "../../common/company-id.decorator";
 import { pgMessage, resolveOrganizationId } from "../../common/company.util";
 
-const TX_TYPES = ["deposit", "payment", "receipt", "adjustment"] as const;
+const TX_TYPES = ["deposit", "payment", "receipt", "adjustment", "withdrawal"] as const;
 
 class CreateFundDto {
   @ApiProperty() @IsUUID() company_id!: string;
   @ApiProperty() @IsString() @Length(1, 200) name!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() is_active?: boolean;
+  @ApiPropertyOptional({ description: "Cash/bank GL account this fund maps to" })
+  @IsOptional() @IsUUID() gl_account_id?: string;
 }
 class UpdateFundDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 200) name?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() is_active?: boolean;
+  @ApiPropertyOptional({ description: "Cash/bank GL account this fund maps to" })
+  @IsOptional() @IsUUID() gl_account_id?: string;
 }
 class FundTxDto {
   @ApiProperty({ enum: TX_TYPES }) @IsIn(TX_TYPES) entry_type!: (typeof TX_TYPES)[number];
@@ -36,9 +40,9 @@ class FundTxDto {
   @ApiPropertyOptional({ description: "1 doc currency = fx_rate base currency" }) @IsOptional() @IsNumberString() fx_rate?: string;
 }
 
-/** deposit/receipt add to the balance; payment subtracts; adjustment is signed. */
+/** deposit/receipt add; payment/withdrawal subtract; adjustment is signed. */
 function effect(type: string, amount: number): number {
-  if (type === "payment") return -Math.abs(amount);
+  if (type === "payment" || type === "withdrawal") return -Math.abs(amount);
   if (type === "adjustment") return amount;
   return Math.abs(amount);
 }

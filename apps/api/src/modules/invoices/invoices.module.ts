@@ -12,12 +12,20 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiTags } from "@nestjs/swagger";
+import { IsNumberString, IsOptional, IsUUID } from "class-validator";
 import { AuthGuard } from "../../auth/auth.guard";
 import { CompanyId } from "../../common/company-id.decorator";
 import { PaginationQueryDto } from "../../common/pagination.dto";
 import { InvoicesService } from "./invoices.service";
 import { CreateInvoiceDto, UpdateInvoiceDto } from "./dto";
+
+/** Receive a payment/deposit for an invoice through a fund (cash/logistics/bank). */
+class ReceivePaymentDto {
+  @ApiProperty({ description: "Fund the payment is received into" }) @IsUUID() fund_id!: string;
+  @ApiPropertyOptional({ description: "Amount in the invoice currency; omit for the full balance" })
+  @IsOptional() @IsNumberString() amount?: string;
+}
 
 @ApiTags("invoices")
 @ApiBearerAuth()
@@ -69,6 +77,11 @@ class InvoicesController {
   @Post(":id/mark-paid")
   markPaid(@Param("id", ParseUUIDPipe) id: string) {
     return this.svc.markPaid(id);
+  }
+
+  @Post(":id/receive-payment")
+  receivePayment(@Param("id", ParseUUIDPipe) id: string, @Body() dto: ReceivePaymentDto) {
+    return this.svc.receivePayment(id, dto.fund_id, dto.amount);
   }
 
   @Delete(":id")

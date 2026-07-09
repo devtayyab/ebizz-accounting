@@ -224,6 +224,22 @@ export class InvoicesService {
     return this.get(id);
   }
 
+  /**
+   * Receive a payment/deposit for an invoice through a Fund. Posts a real GL
+   * payment (settles A/R against the fund's linked cash/bank account) AND
+   * records a fund receipt. Amount omitted → full outstanding balance.
+   */
+  async receivePayment(id: string, fundId: string, amount?: string): Promise<SalesInvoice> {
+    const { error } = await this.db.rpc("receive_invoice_payment", {
+      p_invoice: id,
+      p_fund: fundId,
+      p_amount: amount != null && amount !== "" ? Number(amount) : null,
+      p_date: new Date().toISOString().slice(0, 10),
+    });
+    if (error) throw new BadRequestException(pgMessage(error));
+    return this.get(id);
+  }
+
   private async defaultCashAccount(companyId: string): Promise<string> {
     const { data } = await this.db
       .from("accounts").select("id, code").eq("company_id", companyId).eq("type", "asset").order("code");
