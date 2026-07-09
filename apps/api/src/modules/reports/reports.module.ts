@@ -166,6 +166,25 @@ class ReportsService {
     return rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 12);
   }
 
+  private async rpc(fn: string, params: Record<string, unknown>) {
+    const { data, error } = await this.db.rpc(fn, params);
+    if (error) throw new BadRequestException(pgMessage(error));
+    return data ?? [];
+  }
+
+  taxSummary(companyId: string, from?: string, to?: string) {
+    return this.rpc("report_tax_summary", { p_company: companyId, p_from: from ?? null, p_to: to ?? null });
+  }
+  dayBook(companyId: string, from?: string, to?: string) {
+    return this.rpc("report_day_book", { p_company: companyId, p_from: from ?? null, p_to: to ?? null });
+  }
+  salesRegister(companyId: string, from?: string, to?: string) {
+    return this.rpc("report_sales_register", { p_company: companyId, p_from: from ?? null, p_to: to ?? null });
+  }
+  purchaseRegister(companyId: string, from?: string, to?: string) {
+    return this.rpc("report_purchase_register", { p_company: companyId, p_from: from ?? null, p_to: to ?? null });
+  }
+
   async aging(companyId: string, kind: "ar" | "ap", asOf?: string): Promise<AgingRow[]> {
     const fn = kind === "ar" ? "report_ar_aging" : "report_ap_aging";
     const { data, error } = await this.db.rpc(fn, { p_company: companyId, p_as_of: asOf ?? new Date().toISOString().slice(0, 10) });
@@ -238,6 +257,26 @@ class ReportsController {
   @Get("low-stock")
   lowStock(@CompanyId() companyId: string) {
     return this.svc.lowStock(companyId);
+  }
+
+  @Get("tax-summary")
+  taxSummary(@CompanyId() companyId: string, @Query("from") from?: string, @Query("to") to?: string) {
+    return this.svc.taxSummary(companyId, from, to);
+  }
+
+  @Get("day-book")
+  dayBook(@CompanyId() companyId: string, @Query("from") from?: string, @Query("to") to?: string) {
+    return this.svc.dayBook(companyId, from, to);
+  }
+
+  @Get("sales-register")
+  salesRegister(@CompanyId() companyId: string, @Query("from") from?: string, @Query("to") to?: string) {
+    return this.svc.salesRegister(companyId, from, to);
+  }
+
+  @Get("purchase-register")
+  purchaseRegister(@CompanyId() companyId: string, @Query("from") from?: string, @Query("to") to?: string) {
+    return this.svc.purchaseRegister(companyId, from, to);
   }
 
   @Get("customer-statement")
