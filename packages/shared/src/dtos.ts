@@ -143,6 +143,7 @@ export interface SalesInvoiceLine {
   line_no: number;
   item_id: string | null;
   description: string | null;
+  line_kind?: "item" | "service";
   quantity: string;
   unit_price: string;
   tax_rate_id: string | null;
@@ -187,6 +188,7 @@ export interface PurchaseBillLine {
   line_no: number;
   item_id: string | null;
   description: string | null;
+  line_kind?: "item" | "service";
   quantity: string;
   unit_cost: string;
   tax_rate_id: string | null;

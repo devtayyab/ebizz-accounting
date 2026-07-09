@@ -690,17 +690,17 @@ th {
 .inv-meta-tbl td { border: none; padding: 2px 0 2px 16px; font-size: 13px; text-align: right; }
 .inv-meta-tbl td:first-child { color: #6b7280; }
 
+.inv-company-contact { text-align: right; font-size: 12.5px; color: #6b7280; }
+
 .inv-parties {
   display: flex;
-  gap: 24px;
+  gap: 20px;
+  align-items: flex-start;
   margin: 28px 0 20px;
 }
 .inv-party {
   flex: 1;
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
-  border-radius: 10px;
-  padding: 14px 16px;
+  padding: 2px 0;
 }
 .inv-party-name { font-weight: 600; margin: 2px 0; }
 .inv-label {
@@ -711,18 +711,35 @@ th {
   font-weight: 700;
   margin-bottom: 4px;
 }
-.inv-table { margin-top: 4px; font-size: 13.5px; }
+/* teal meta box (Number / Invoice Date / Due Date / Invoice Total) */
+.inv-metabox {
+  width: 250px;
+  flex-shrink: 0;
+  background: var(--inv-accent, #2b5f6b);
+  color: #fff;
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+.inv-metabox-title { font-size: 12px; letter-spacing: 0.14em; opacity: 0.75; margin-bottom: 10px; }
+.inv-metabox-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
+.inv-metabox-row span:first-child { opacity: 0.8; }
+.inv-metabox-row.total { border-top: 1px solid rgba(255,255,255,0.25); margin-top: 8px; padding-top: 8px; font-size: 14px; }
+
+.inv-table { margin-top: 18px; font-size: 13.5px; }
 .inv-table thead th {
-  background: #f1f5f9;
+  background: var(--inv-accent, #2b5f6b);
   border-bottom: none;
   padding: 10px 12px;
-  color: #475569;
+  color: #fff;
+  font-weight: 600;
 }
 .inv-table tbody td { padding: 10px 12px; border-bottom: 1px solid #eef2f7; }
 .inv-table tbody tr:hover { background: transparent; }
+.inv-table tbody tr:nth-child(even) { background: #f8fafc; }
 
-.inv-summary { display: flex; justify-content: flex-end; margin-top: 16px; }
-.inv-totals { width: 300px; }
+.inv-summary { display: flex; justify-content: space-between; gap: 24px; margin-top: 20px; }
+.inv-notes { flex: 1; }
+.inv-totals { width: 300px; flex-shrink: 0; }
 .inv-totals > div {
   display: flex;
   justify-content: space-between;
@@ -737,9 +754,11 @@ th {
 .inv-balance {
   font-weight: 800;
   font-size: 16px;
-  background: #f1f5f9;
+  background: var(--inv-accent, #2b5f6b);
+  color: #fff;
   border-radius: 8px;
   margin-top: 4px;
+  padding: 10px 12px !important;
 }
 .inv-block { margin-top: 22px; }
 .inv-text { font-size: 12.5px; color: #4b5563; white-space: pre-wrap; line-height: 1.6; }
@@ -769,29 +788,8 @@ th {
   z-index: 2;
 }
 
-/* Template: Modern — gradient banner */
-.tpl-modern .inv-top {
-  background: linear-gradient(135deg, var(--primary), #6d5efc);
-  color: #fff;
-  padding: 26px;
-  border-radius: 14px;
-}
-.tpl-modern .inv-logo { background: rgba(255, 255, 255, 0.18); }
-.tpl-modern .inv-company { color: #fff; }
-.tpl-modern .inv-sub { color: rgba(255, 255, 255, 0.82); }
-.tpl-modern .inv-title { color: #fff; }
-.tpl-modern .inv-meta-tbl td { color: rgba(255, 255, 255, 0.82); }
-.tpl-modern .inv-meta-tbl td strong { color: #fff; }
-.tpl-modern .inv-grand { color: var(--primary); }
-
-/* Template: Classic — serif, ruled, monochrome */
-.tpl-classic { font-family: Georgia, "Times New Roman", serif; }
-.tpl-classic .inv-top { border-bottom: 3px double #111; padding-bottom: 18px; }
-.tpl-classic .inv-logo { background: #111; border-radius: 4px; }
-.tpl-classic .inv-title { color: #111; letter-spacing: 0.14em; }
-.tpl-classic .inv-party { background: #fff; border: 1px solid #ccc; border-radius: 0; }
-.tpl-classic .inv-table thead th { background: #111; color: #fff; }
-.tpl-classic .inv-balance { background: #f0f0f0; border-radius: 0; }
+.inv-top { border-bottom: 2px solid #eef2f7; padding-bottom: 18px; }
+.inv-logo { background: var(--inv-accent, #2b5f6b); }
 
 @media print {
   .rail-icons, .rail-menu, .topbar, .no-print { display: none !important; }

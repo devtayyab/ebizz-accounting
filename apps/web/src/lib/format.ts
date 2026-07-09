@@ -7,6 +7,32 @@ export function money(value: string | number | null | undefined, currency = "USD
   }
 }
 
+/**
+ * Groups line tax into one entry per rate, labelled with the tax-rate name when
+ * one matches (e.g. "GST 10%", "VAT 17.5%") — powers the invoice totals block.
+ */
+export function taxBreakdown(
+  rows: { taxRate: number; taxAmount: number }[],
+  taxRates: { name: string; rate: string | number }[],
+): { label: string; amount: number }[] {
+  const groups = new Map<number, number>();
+  for (const r of rows) {
+    if (!r.taxRate || !r.taxAmount) continue;
+    groups.set(r.taxRate, (groups.get(r.taxRate) ?? 0) + r.taxAmount);
+  }
+  return [...groups.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([rate, amt]) => {
+      const named = taxRates.find((t) => Math.abs(Number(t.rate) - rate) < 1e-6);
+      const pctNum = rate * 100;
+      const pct = Number.isInteger(pctNum) ? String(pctNum) : pctNum.toFixed(2);
+      return {
+        label: named ? `${named.name} ${pct}%` : `Tax ${pct}%`,
+        amount: Math.round((amt + Number.EPSILON) * 100) / 100,
+      };
+    });
+}
+
 export interface Badge {
   label: string;
   cls: string;

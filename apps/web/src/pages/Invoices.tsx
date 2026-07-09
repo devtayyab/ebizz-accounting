@@ -10,8 +10,8 @@ import { useConfirm } from "../state/ConfirmContext";
 import { Modal } from "../components/Modal";
 import { EditableLine, LineItemsEditor, emptyLine, lineTotals } from "../components/LineItemsEditor";
 import { fxRateInvalid } from "../components/CurrencyRate";
-import { InvoiceTemplate, InvoiceTemplateData, TemplateStyle } from "../components/InvoiceTemplate";
-import { money, paymentStatus } from "../lib/format";
+import { InvoiceTemplate, InvoiceTemplateData } from "../components/InvoiceTemplate";
+import { money, paymentStatus, taxBreakdown } from "../lib/format";
 import { EmptyCell } from "../components/Empty";
 import { Pagination } from "../components/Pagination";
 import { useDebounced } from "../lib/useDebounced";
@@ -263,13 +263,13 @@ function InvoiceEditor({
   const [fxRate, setFxRate] = useState("1");
   const [discount, setDiscount] = useState("");
   const [shipping, setShipping] = useState("");
-  const [lines, setLines] = useState<EditableLine[]>([emptyLine()]);
+  const [itemLines, setItemLines] = useState<EditableLine[]>([emptyLine()]);
+  const [serviceLines, setServiceLines] = useState<EditableLine[]>([]);
   const [shipTo, setShipTo] = useState({ name: "", address: "", city: "", country: "" });
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
   const [termsTouched, setTermsTouched] = useState(false);
   const [preview, setPreview] = useState(false);
-  const [template, setTemplate] = useState<TemplateStyle>("modern");
   const [error, setError] = useState<string | null>(null);
 
   const { data: customers } = useQuery({ queryKey: ["customers", "all"], queryFn: () => api.get<Paginated<Customer>>("/customers?page=1&page_size=200") });
@@ -312,10 +312,15 @@ function InvoiceEditor({
       setNotes(inv.notes ?? "");
       setTerms(inv.terms ?? ""); setTermsTouched(true);
       setShipTo({ name: inv.ship_to_name ?? "", address: inv.ship_to_address ?? "", city: inv.ship_to_city ?? "", country: inv.ship_to_country ?? "" });
-      setLines((inv.lines ?? []).map((l) => ({
-        item_id: l.item_id ?? "", description: l.description ?? "",
-        quantity: String(l.quantity), rate: String(l.unit_price), tax_rate: String(l.tax_rate),
-      })));
+      const mapped = (inv.lines ?? []).map((l) => ({
+        kind: l.line_kind ?? "item",
+        line: { item_id: l.item_id ?? "", description: l.description ?? "",
+          quantity: String(l.quantity), rate: String(l.unit_price), tax_rate: String(l.tax_rate) } as EditableLine,
+      }));
+      const items = mapped.filter((m) => m.kind !== "service").map((m) => m.line);
+      const services = mapped.filter((m) => m.kind === "service").map((m) => m.line);
+      setItemLines(items.length ? items : [emptyLine()]);
+      setServiceLines(services);
       return inv;
     },
   });
@@ -330,12 +335,18 @@ function InvoiceEditor({
         terms: terms || undefined,
         ship_to_name: shipTo.name || undefined, ship_to_address: shipTo.address || undefined,
         ship_to_city: shipTo.city || undefined, ship_to_country: shipTo.country || undefined,
-        lines: lines.filter((l) => Number(l.quantity) > 0).map((l) => ({
-          item_id: l.item_id || undefined, description: l.description || undefined,
-          quantity: String(Number(l.quantity) || 0),
-          unit_price: String(Number(l.rate) || 0),
-          tax_rate: String(Number(l.tax_rate) || 0),
-        })),
+        lines: [
+          ...itemLines.map((l) => ({ l, kind: "item" as const })),
+          ...serviceLines.map((l) => ({ l, kind: "service" as const })),
+        ]
+          .filter(({ l }) => Number(l.quantity) > 0 && (l.item_id || l.description || Number(l.rate) > 0))
+          .map(({ l, kind }) => ({
+            item_id: l.item_id || undefined, description: l.description || undefined,
+            line_kind: kind,
+            quantity: String(Number(l.quantity) || 0),
+            unit_price: String(Number(l.rate) || 0),
+            tax_rate: String(Number(l.tax_rate) || 0),
+          })),
       };
       const req = invoiceId
         ? api.patch<SalesInvoice>(`/invoices/${invoiceId}`, body)
@@ -347,7 +358,26 @@ function InvoiceEditor({
   });
 
   const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-  const totals = lineTotals(lines);
+  const allLines = [...itemLines, ...serviceLines];
+  const totals = lineTotals(allLines);
+  const toTplLine = (l: EditableLine, isService: boolean) => {
+    const sub = round2(Number(l.quantity || (isService ? 1 : 0)) * Number(l.rate || 0));
+    const tax = round2(sub * Number(l.tax_rate || 0));
+    return {
+      name: isService
+        ? (l.description || "Service")
+        : (items?.data.find((i) => i.id === l.item_id)?.name ?? l.description ?? "—"),
+      description: isService ? "" : l.description,
+      qty: Number(l.quantity || 1), price: l.rate, tax: String(tax), amount: String(round2(sub + tax)),
+    };
+  };
+  const taxLines = taxBreakdown(
+    allLines.map((l) => {
+      const sub = Number(l.quantity || 1) * Number(l.rate || 0);
+      return { taxRate: Number(l.tax_rate || 0), taxAmount: round2(sub * Number(l.tax_rate || 0)) };
+    }),
+    taxRates ?? [],
+  );
   const previewData: InvoiceTemplateData = {
     company: {
       name: activeCompany?.name ?? "", legal: activeCompany?.legal_name,
@@ -357,13 +387,10 @@ function InvoiceEditor({
     number: invoiceId ? "(existing)" : "Draft (preview)", date: invoiceDate, dueDate: dueDate || null,
     billTo: { name: customer?.name ?? "—", email: customer?.email, taxNumber: customer?.tax_number, address: customer?.address_line1, city: customer?.city, country: customer?.country },
     shipTo,
-    lines: lines.filter((l) => Number(l.quantity) > 0).map((l) => {
-      const sub = round2(Number(l.quantity) * Number(l.rate || 0));
-      const tax = round2(sub * Number(l.tax_rate || 0));
-      return { name: items?.data.find((i) => i.id === l.item_id)?.name ?? l.description ?? "—",
-        qty: Number(l.quantity), price: l.rate, tax: String(tax), amount: String(round2(sub + tax)) };
-    }),
-    subtotal: String(totals.subtotal), taxTotal: String(totals.tax),
+    items: itemLines.filter((l) => Number(l.quantity) > 0 && (l.item_id || l.description)).map((l) => toTplLine(l, false)),
+    services: serviceLines.filter((l) => l.description || Number(l.rate) > 0).map((l) => toTplLine(l, true)),
+    subtotal: String(totals.subtotal),
+    taxLines,
     discount: String(Number(discount) || 0), shipping: String(Number(shipping) || 0),
     total: String(round2(totals.total - (Number(discount) || 0) + (Number(shipping) || 0))),
     currency: docCurrency, notes, terms, footer: activeCompany?.invoice_footer,
@@ -375,16 +402,9 @@ function InvoiceEditor({
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <button onClick={() => setPreview(false)}>← Back to edit</button>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <label style={{ margin: 0 }}>Template</label>
-              <select value={template} onChange={(e) => setTemplate(e.target.value as TemplateStyle)} style={{ width: 130 }}>
-                <option value="modern">Modern</option>
-                <option value="classic">Classic</option>
-              </select>
-            </div>
           </div>
           <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 20 }}>
-            <InvoiceTemplate data={previewData} template={template} />
+            <InvoiceTemplate data={previewData} />
           </div>
           {error && <div className="error">{error}</div>}
           <div className="modal-actions">
@@ -446,10 +466,16 @@ function InvoiceEditor({
             <div className="field"><label>Country</label><input value={shipTo.country} onChange={(e) => setShipTo({ ...shipTo, country: e.target.value })} /></div>
           </div>
 
+          <label style={{ fontWeight: 600, display: "block", marginTop: 8 }}>Items</label>
           <LineItemsEditor
-            lines={lines} onChange={setLines} items={items?.data ?? []} taxRates={taxRates ?? []}
-            currency={docCurrency} rateLabel="Price" priceFrom="sale_price"
+            lines={itemLines} onChange={setItemLines} items={items?.data ?? []} taxRates={taxRates ?? []}
+            currency={docCurrency} rateLabel="Unit Price" priceFrom="sale_price" kind="item"
             isSelectable={(it) => !it.track_inventory || onHand(it.id) > 0}
+          />
+          <label style={{ fontWeight: 600, display: "block", marginTop: 18 }}>Services <span className="muted" style={{ fontWeight: 400 }}>(labour, fees — no stock)</span></label>
+          <LineItemsEditor
+            lines={serviceLines} onChange={setServiceLines} items={[]} taxRates={taxRates ?? []}
+            currency={docCurrency} rateLabel="Cost" priceFrom="sale_price" kind="service"
           />
           <div className="grid-2">
             <div className="field"><label>Discount ({docCurrency})</label><input value={discount} placeholder="0.00" onChange={(e) => setDiscount(e.target.value)} /></div>
