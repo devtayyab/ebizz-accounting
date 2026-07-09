@@ -38,6 +38,7 @@ export class InvoicesService {
       .from("sales_invoices")
       .select("*", { count: "exact" })
       .eq("company_id", companyId)
+      .is("deleted_at", null)
       .order("invoice_date", { ascending: false })
       .range(from, to);
     if (query.q) q = q.ilike("invoice_number", `%${query.q}%`);
@@ -69,6 +70,7 @@ export class InvoicesService {
         line_no: i + 1,
         item_id: l.item_id ?? null,
         description: l.description ?? null,
+        line_kind: l.line_kind ?? "item",
         quantity: l.quantity,
         unit_price: l.unit_price,
         tax_rate_id: l.tax_rate_id ?? null,
@@ -137,6 +139,7 @@ export class InvoicesService {
         line_no: i + 1,
         item_id: l.item_id ?? null,
         description: l.description ?? null,
+        line_kind: l.line_kind ?? "item",
         quantity: l.quantity,
         unit_price: l.unit_price,
         tax_rate_id: l.tax_rate_id ?? null,
@@ -224,6 +227,22 @@ export class InvoicesService {
     return this.get(id);
   }
 
+  /**
+   * Receive a payment/deposit for an invoice through a Fund. Posts a real GL
+   * payment (settles A/R against the fund's linked cash/bank account) AND
+   * records a fund receipt. Amount omitted → full outstanding balance.
+   */
+  async receivePayment(id: string, fundId: string, amount?: string): Promise<SalesInvoice> {
+    const { error } = await this.db.rpc("receive_invoice_payment", {
+      p_invoice: id,
+      p_fund: fundId,
+      p_amount: amount != null && amount !== "" ? Number(amount) : null,
+      p_date: new Date().toISOString().slice(0, 10),
+    });
+    if (error) throw new BadRequestException(pgMessage(error));
+    return this.get(id);
+  }
+
   private async defaultCashAccount(companyId: string): Promise<string> {
     const { data } = await this.db
       .from("accounts").select("id, code").eq("company_id", companyId).eq("type", "asset").order("code");
@@ -233,19 +252,11 @@ export class InvoicesService {
     return acct.id;
   }
 
+  /** Soft-delete: reverses the ledger effect and moves the invoice to the Recycle Bin. */
   async remove(id: string): Promise<void> {
-    const existing = await this.get(id);
-    if (existing.status === "posted") {
-      if (Number(existing.amount_paid) > 0) {
-        throw new BadRequestException("Reverse the payments before deleting this invoice");
-      }
-      // void the ledger effect first, then remove the document
-      const { error: revErr } = await this.db.rpc("reverse_document", { p_type: "invoice", p_id: id });
-      if (revErr) throw new BadRequestException(pgMessage(revErr));
-    }
+    const { error } = await this.db.rpc("soft_delete_record", { p_type: "invoice", p_id: id });
+    if (error) throw new BadRequestException(pgMessage(error));
     // release any sales order that was converted into this invoice
     await this.db.from("sales_orders").update({ invoice_id: null, status: "open" }).eq("invoice_id", id);
-    const { error } = await this.db.from("sales_invoices").delete().eq("id", id);
-    if (error) throw new BadRequestException(pgMessage(error));
   }
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Customer, Paginated, Supplier } from "@ebizz/shared";
+import type { Account, Customer, Paginated, Supplier } from "@ebizz/shared";
 import { api, ApiError } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
 import { useConfirm } from "../state/ConfirmContext";
@@ -9,9 +9,10 @@ import { CurrencyRate, fxRateInvalid } from "../components/CurrencyRate";
 import { EmptyCell } from "../components/Empty";
 import { money } from "../lib/format";
 
-interface FundAccount { id: string; name: string; description: string | null; is_active: boolean; balance: number }
+interface FundAccount { id: string; name: string; description: string | null; is_active: boolean; balance: number; gl_account_id: string | null }
+type FundTxType = "deposit" | "payment" | "receipt" | "adjustment" | "withdrawal";
 interface FundTx {
-  id: string; txn_date: string; entry_type: "deposit" | "payment" | "receipt" | "adjustment";
+  id: string; txn_date: string; entry_type: FundTxType;
   amount: string; currency: string | null; fx_rate: string | null;
   supplier_id: string | null; customer_id: string | null;
   counterparty: string | null; reference: string | null; memo: string | null;
@@ -19,7 +20,8 @@ interface FundTx {
 
 const TYPE_LABEL: Record<string, string> = {
   deposit: "Deposit (add funds)", payment: "Payment out (to supplier)",
-  receipt: "Receipt (from customer)", adjustment: "Adjustment (+/−)",
+  receipt: "Receipt (from customer)", withdrawal: "Withdrawal (take funds out)",
+  adjustment: "Adjustment (+/−)",
 };
 
 export function FundsPage() {
@@ -28,7 +30,7 @@ export function FundsPage() {
   const ask = useConfirm();
   const ccy = activeCompany?.base_currency ?? "USD";
   const [selected, setSelected] = useState<FundAccount | null>(null);
-  const [addAccount, setAddAccount] = useState(false);
+  const [fundForm, setFundForm] = useState<{ fund: FundAccount | null } | null>(null);
   const [txModal, setTxModal] = useState<{ fund: FundAccount; tx: FundTx | null } | null>(null);
 
   const { data: funds, isLoading } = useQuery({
@@ -60,7 +62,7 @@ export function FundsPage() {
   // Effect is shown in the company base currency (amount × fx_rate), matching the balance.
   const effect = (t: FundTx) => {
     const base = Number(t.amount) * (Number(t.fx_rate) || 1);
-    return t.entry_type === "payment" ? -Math.abs(base)
+    return t.entry_type === "payment" || t.entry_type === "withdrawal" ? -Math.abs(base)
       : t.entry_type === "adjustment" ? base : Math.abs(base);
   };
 
@@ -68,29 +70,32 @@ export function FundsPage() {
     <div>
       <div className="page-head">
         <h1>Funds &amp; Advances</h1>
-        <button className="primary" onClick={() => setAddAccount(true)}>+ New fund account</button>
+        <button className="primary" onClick={() => setFundForm({ fund: null })}>+ New fund account</button>
       </div>
       <div className="card" style={{ marginBottom: 20 }}>
         <p className="muted" style={{ marginTop: 0 }}>
-          Track money you park with a warehouse / logistics partner: deposits add to the
-          balance, payments to suppliers reduce it, receipts from customers add to it.
+          Track money you park with a warehouse / logistics partner. Link a fund to a cash/bank
+          account and it becomes a selectable <strong>payment type</strong> on invoices — marking an
+          invoice paid then settles the ledger and records a receipt here automatically.
         </p>
         {isLoading ? <p className="muted">Loading…</p> : (
           <table>
-            <thead><tr><th>Name</th><th>Description</th><th style={{ textAlign: "right" }}>Balance</th><th /></tr></thead>
+            <thead><tr><th>Name</th><th>Description</th><th>Linked account</th><th style={{ textAlign: "right" }}>Balance</th><th /></tr></thead>
             <tbody>
               {(funds ?? []).map((f) => (
                 <tr key={f.id} style={{ cursor: "pointer" }} onClick={() => setSelected(f)}>
                   <td style={{ fontWeight: selected?.id === f.id ? 700 : 400 }}>{f.name}</td>
                   <td className="muted">{f.description ?? "—"}</td>
+                  <td className="muted">{f.gl_account_id ? <AccountName id={f.gl_account_id} /> : <span className="badge warn">Not linked</span>}</td>
                   <td style={{ textAlign: "right", fontWeight: 600, color: f.balance < 0 ? "var(--danger)" : "inherit" }}>{money(f.balance, ccy)}</td>
                   <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
                     <button className="link" onClick={() => setSelected(f)}>Transactions</button>
+                    <button className="link" onClick={() => setFundForm({ fund: f })}>Edit</button>
                     <button className="link danger" onClick={() => ask({ title: "Delete fund account", message: `Delete “${f.name}” and all its transactions?`, confirmLabel: "Delete", danger: true }).then((ok) => ok && removeAccount.mutate(f.id))}>Delete</button>
                   </td>
                 </tr>
               ))}
-              {funds?.length === 0 && <tr><td colSpan={4}><EmptyCell>No fund accounts yet. Create one for your warehouse/logistics partner.</EmptyCell></td></tr>}
+              {funds?.length === 0 && <tr><td colSpan={5}><EmptyCell>No fund accounts yet. Create one for your warehouse/logistics partner.</EmptyCell></td></tr>}
             </tbody>
           </table>
         )}
@@ -108,7 +113,7 @@ export function FundsPage() {
               {(txs ?? []).map((t) => (
                 <tr key={t.id}>
                   <td>{t.txn_date}</td>
-                  <td><span className={`badge ${t.entry_type === "payment" ? "warn" : t.entry_type === "adjustment" ? "off" : "ok"}`}>{t.entry_type}</span></td>
+                  <td><span className={`badge ${t.entry_type === "payment" || t.entry_type === "withdrawal" ? "warn" : t.entry_type === "adjustment" ? "off" : "ok"}`}>{t.entry_type}</span></td>
                   <td>{partyName(t)}</td>
                   <td className="muted">{t.reference ?? "—"}</td>
                   <td className="muted">{t.memo ?? "—"}</td>
@@ -127,8 +132,8 @@ export function FundsPage() {
         </div>
       )}
 
-      {addAccount && <FundForm companyId={activeCompanyId!} onClose={() => setAddAccount(false)}
-        onSaved={() => { invalidate(); setAddAccount(false); }} />}
+      {fundForm && <FundForm companyId={activeCompanyId!} fund={fundForm.fund} onClose={() => setFundForm(null)}
+        onSaved={() => { invalidate(); setFundForm(null); }} />}
       {txModal && <TxForm fund={txModal.fund} tx={txModal.tx} base={ccy}
         suppliers={suppliers?.data ?? []} customers={customers?.data ?? []}
         onClose={() => setTxModal(null)} onSaved={() => { invalidate(); setTxModal(null); }} />}
@@ -136,19 +141,39 @@ export function FundsPage() {
   );
 }
 
-function FundForm({ companyId, onClose, onSaved }: { companyId: string; onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+/** Renders "1010 — Bank" for a linked GL account id. */
+function AccountName({ id }: { id: string }) {
+  const { data } = useQuery({ queryKey: ["accounts", "all"], queryFn: () => api.get<Account[]>("/accounts") });
+  const a = data?.find((x) => x.id === id);
+  return <>{a ? `${a.code} — ${a.name}` : "—"}</>;
+}
+
+function FundForm({ companyId, fund, onClose, onSaved }: { companyId: string; fund: FundAccount | null; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(fund?.name ?? "");
+  const [description, setDescription] = useState(fund?.description ?? "");
+  const [glAccount, setGlAccount] = useState(fund?.gl_account_id ?? "");
   const [error, setError] = useState<string | null>(null);
+  const { data: accounts } = useQuery({ queryKey: ["accounts", "all"], queryFn: () => api.get<Account[]>("/accounts") });
+  const cashAccounts = (accounts ?? []).filter((a) => a.type === "asset");
   const save = useMutation({
-    mutationFn: () => api.post("/funds", { company_id: companyId, name, description: description || undefined }),
+    mutationFn: () => {
+      const body = { name, description: description || undefined, gl_account_id: glAccount || undefined };
+      return fund ? api.patch(`/funds/${fund.id}`, body) : api.post("/funds", { company_id: companyId, ...body });
+    },
     onSuccess: onSaved, onError: (e) => setError(e instanceof ApiError ? e.message : "Failed"),
-    meta: { successMessage: "Fund account created" },
+    meta: { successMessage: fund ? "Fund account updated" : "Fund account created" },
   });
   return (
-    <Modal title="New fund account" onClose={onClose}>
+    <Modal title={fund ? "Edit fund account" : "New fund account"} onClose={onClose}>
       <div className="field"><label>Name *</label><input value={name} placeholder="e.g. DHL Logistics wallet" onChange={(e) => setName(e.target.value)} /></div>
       <div className="field"><label>Description</label><input value={description} onChange={(e) => setDescription(e.target.value)} /></div>
+      <div className="field">
+        <label>Linked cash/bank account <span className="muted" style={{ fontWeight: 400 }}>(so it can be used as an invoice payment type)</span></label>
+        <select value={glAccount} onChange={(e) => setGlAccount(e.target.value)}>
+          <option value="">— not linked —</option>
+          {cashAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+        </select>
+      </div>
       {error && <div className="error">{error}</div>}
       <div className="modal-actions">
         <button onClick={onClose}>Cancel</button>

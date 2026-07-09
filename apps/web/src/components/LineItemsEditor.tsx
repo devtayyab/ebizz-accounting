@@ -38,6 +38,7 @@ export function LineItemsEditor({
   rateLabel,
   priceFrom,
   isSelectable,
+  kind = "item",
 }: {
   lines: EditableLine[];
   onChange: (lines: EditableLine[]) => void;
@@ -50,7 +51,10 @@ export function LineItemsEditor({
    *  dropdown (e.g. out-of-stock on a sales invoice). The item already picked
    *  on a line is always kept so editing an existing document never breaks. */
   isSelectable?: (item: Item) => boolean;
+  /** 'service' hides the item picker (services are free-text description + cost). */
+  kind?: "item" | "service";
 }) {
+  const showItem = kind !== "service";
   const update = (i: number, patch: Partial<EditableLine>) =>
     onChange(lines.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const remove = (i: number) => onChange(lines.filter((_, idx) => idx !== i));
@@ -71,9 +75,9 @@ export function LineItemsEditor({
       <table>
         <thead>
           <tr>
-            <th style={{ width: "26%" }}>Item</th>
+            {showItem && <th style={{ width: "26%" }}>Item</th>}
             <th>Description</th>
-            <th style={{ width: 70 }}>Qty</th>
+            {showItem && <th style={{ width: 70 }}>Qty</th>}
             <th style={{ width: 90 }}>{rateLabel}</th>
             <th style={{ width: 110 }}>Tax</th>
             <th style={{ width: 90 }}>Amount</th>
@@ -85,24 +89,28 @@ export function LineItemsEditor({
             const amount = Number(l.quantity || 0) * Number(l.rate || 0);
             return (
               <tr key={i}>
-                <td>
-                  <select value={l.item_id} onChange={(e) => onPickItem(i, e.target.value)}>
-                    <option value="">— none —</option>
-                    {items
-                      .filter((it) => it.id === l.item_id || !isSelectable || isSelectable(it))
-                      .map((it) => (
-                        <option key={it.id} value={it.id}>
-                          {it.sku} · {it.name}
-                        </option>
-                      ))}
-                  </select>
-                </td>
+                {showItem && (
+                  <td>
+                    <select value={l.item_id} onChange={(e) => onPickItem(i, e.target.value)}>
+                      <option value="">— none —</option>
+                      {items
+                        .filter((it) => it.id === l.item_id || !isSelectable || isSelectable(it))
+                        .map((it) => (
+                          <option key={it.id} value={it.id}>
+                            {it.sku} · {it.name}
+                          </option>
+                        ))}
+                    </select>
+                  </td>
+                )}
                 <td>
                   <input value={l.description} onChange={(e) => update(i, { description: e.target.value })} />
                 </td>
-                <td>
-                  <input value={l.quantity} onChange={(e) => update(i, { quantity: e.target.value })} />
-                </td>
+                {showItem && (
+                  <td>
+                    <input value={l.quantity} onChange={(e) => update(i, { quantity: e.target.value })} />
+                  </td>
+                )}
                 <td>
                   <input value={l.rate} onChange={(e) => update(i, { rate: e.target.value })} />
                 </td>

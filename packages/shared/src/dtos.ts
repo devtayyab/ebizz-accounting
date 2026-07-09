@@ -143,6 +143,7 @@ export interface SalesInvoiceLine {
   line_no: number;
   item_id: string | null;
   description: string | null;
+  line_kind?: "item" | "service";
   quantity: string;
   unit_price: string;
   tax_rate_id: string | null;
@@ -187,6 +188,7 @@ export interface PurchaseBillLine {
   line_no: number;
   item_id: string | null;
   description: string | null;
+  line_kind?: "item" | "service";
   quantity: string;
   unit_cost: string;
   tax_rate_id: string | null;
@@ -449,6 +451,18 @@ export interface Expense {
   fx_rate: string;
   reference: string | null;
   memo: string | null;
+  created_at: string;
+}
+
+export interface InvoiceDocument {
+  id: string;
+  organization_id: string;
+  company_id: string;
+  invoice_id: string | null;
+  name: string;
+  mime: string | null;
+  size: number | null;
+  storage_path: string;
   created_at: string;
 }
 

@@ -3,15 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Paginated, Supplier } from "@ebizz/shared";
 import { api, ApiError } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
+import { useConfirm } from "../state/ConfirmContext";
 import { Modal } from "../components/Modal";
 import { EmptyCell } from "../components/Empty";
 import { Pagination } from "../components/Pagination";
+import { ExportButtons } from "../components/ExportButtons";
 
 type FormState = Partial<Supplier> & { name: string };
 
 export function SuppliersPage() {
   const { activeCompanyId } = useCompany();
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [creating, setCreating] = useState(false);
   const [page, setPage] = useState(1);
@@ -29,14 +32,31 @@ export function SuppliersPage() {
     mutationFn: (id: string) => api.delete(`/suppliers/${id}`),
     onSuccess: invalidate,
   });
+  const askDelete = (s: Supplier) =>
+    confirm({ title: "Delete supplier", message: `Delete “${s.name}”? They will move to the Recycle Bin.`, confirmLabel: "Delete", danger: true })
+      .then((ok) => ok && remove.mutate(s.id));
 
   return (
     <div>
       <div className="page-head">
         <h1>Suppliers</h1>
-        <button className="primary" onClick={() => setCreating(true)}>
-          + New supplier
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={data?.data ?? []}
+            filename="suppliers"
+            title="Suppliers"
+            columns={[
+              { header: "Name", value: (s) => s.name },
+              { header: "Email", value: (s) => s.email ?? "" },
+              { header: "Currency", value: (s) => s.currency ?? "" },
+              { header: "Terms (days)", value: (s) => s.payment_terms_days ?? "" },
+              { header: "Status", value: (s) => (s.is_active ? "Active" : "Inactive") },
+            ]}
+          />
+          <button className="primary" onClick={() => setCreating(true)}>
+            + New supplier
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -70,7 +90,7 @@ export function SuppliersPage() {
                     <button className="link" onClick={() => setEditing(s)}>
                       Edit
                     </button>
-                    <button className="link danger" onClick={() => remove.mutate(s.id)}>
+                    <button className="link danger" onClick={() => askDelete(s)}>
                       Delete
                     </button>
                   </td>

@@ -24,6 +24,7 @@ import { GeneralLedgerPage } from "./pages/GeneralLedger";
 import { StatementsPage } from "./pages/Statements";
 import { ExpensesPage } from "./pages/Expenses";
 import { FundsPage } from "./pages/Funds";
+import { RecycleBinPage } from "./pages/RecycleBin";
 import { InvoiceView } from "./pages/InvoiceView";
 import { BillView } from "./pages/BillView";
 
@@ -69,6 +70,7 @@ export function App() {
         <Route path="/general-ledger" element={<GeneralLedgerPage />} />
         <Route path="/statements" element={<StatementsPage />} />
         <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/recycle-bin" element={<RecycleBinPage />} />
         <Route path="/accounting" element={<AccountsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

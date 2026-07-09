@@ -10,6 +10,7 @@ import { Modal } from "../components/Modal";
 import { CurrencyRate, fxRateInvalid } from "../components/CurrencyRate";
 import { EmptyCell } from "../components/Empty";
 import { money } from "../lib/format";
+import { ExportButtons } from "../components/ExportButtons";
 
 export function PaymentsPage() {
   const { activeCompanyId, activeCompany } = useCompany();
@@ -58,7 +59,23 @@ export function PaymentsPage() {
     <div>
       <div className="page-head">
         <h1>Payments</h1>
-        <button className="primary" onClick={() => setOpen(true)}>+ Record payment</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={payments ?? []}
+            filename="payments"
+            title="Payments"
+            columns={[
+              { header: "Date", value: (p) => p.payment_date },
+              { header: "Type", value: (p) => (p.party_type === "customer" ? "Received" : "Paid") },
+              { header: "Amount", value: (p) => Number(p.amount) },
+              { header: "Currency", value: (p) => p.currency },
+              { header: "Method", value: (p) => p.method ?? "" },
+              { header: "Reference", value: (p) => p.reference ?? "" },
+              { header: "Status", value: (p) => (p.reversed ? "Reversed" : "Posted") },
+            ]}
+          />
+          <button className="primary" onClick={() => setOpen(true)}>+ Record payment</button>
+        </div>
       </div>
       <div className="card">
         {isLoading ? <p className="muted">Loading…</p> : (

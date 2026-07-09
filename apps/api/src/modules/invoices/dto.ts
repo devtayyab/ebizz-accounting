@@ -3,6 +3,7 @@ import { Type } from "class-transformer";
 import {
   IsArray,
   IsDateString,
+  IsIn,
   IsNumberString,
   IsOptional,
   IsString,
@@ -14,6 +15,7 @@ import {
 export class InvoiceLineDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() item_id?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
+  @ApiPropertyOptional({ enum: ["item", "service"] }) @IsOptional() @IsIn(["item", "service"]) line_kind?: "item" | "service";
   @ApiProperty() @IsNumberString() quantity!: string;
   @ApiProperty() @IsNumberString() unit_price!: string;
   @ApiPropertyOptional({ description: "Tax fraction, e.g. 0.15" })
@@ -25,7 +27,7 @@ export class InvoiceLineDto {
 export class CreateInvoiceDto {
   @ApiProperty() @IsUUID() company_id!: string;
   @ApiProperty() @IsUUID() customer_id!: string;
-  @ApiPropertyOptional() @IsOptional() @IsUUID() location_id?: string;
+  @ApiProperty({ description: "Warehouse to issue stock from — required." }) @IsUUID() location_id!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() invoice_number?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() invoice_date?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() due_date?: string;

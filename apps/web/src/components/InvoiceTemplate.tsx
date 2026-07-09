@@ -1,6 +1,16 @@
 import { money } from "../lib/format";
 
+/** Kept for API compatibility with callers that still pass a template style. */
 export type TemplateStyle = "classic" | "modern";
+
+export interface TemplateLine {
+  name: string;
+  description?: string | null;
+  qty: number;
+  price: string;
+  tax: string;
+  amount: string;
+}
 
 export interface InvoiceTemplateData {
   company: {
@@ -19,10 +29,14 @@ export interface InvoiceTemplateData {
   dueDate?: string | null;
   billTo: { name: string; email?: string | null; taxNumber?: string | null; address?: string | null; city?: string | null; country?: string | null };
   shipTo?: { name?: string | null; address?: string | null; city?: string | null; country?: string | null } | null;
-  lines: { name: string; qty: number; price: string; tax: string; amount: string }[];
+  /** Product lines (line_kind = 'item'). */
+  items: TemplateLine[];
+  /** Service lines (line_kind = 'service'). */
+  services: TemplateLine[];
   subtotal: string;
-  taxTotal: string;
   discount?: string;
+  /** One entry per tax rate, e.g. { label: "GST 10%", amount: 12.5 }. */
+  taxLines: { label: string; amount: string | number }[];
   shipping?: string;
   total: string;
   paid?: string;
@@ -34,53 +48,52 @@ export interface InvoiceTemplateData {
 
 const join = (parts: (string | null | undefined)[]) => parts.filter(Boolean).join(", ");
 
-/** Renders a printable, professional invoice in one of two visual styles. */
+/**
+ * The single Ebizz invoice format — company header, "Invoice issued to" +
+ * "Shipping address" + a teal meta box, an Items table then a Services table,
+ * and a Net / Subtotal / Discount / per-rate tax / Total / Paid / Outstanding
+ * block. Reused for bills via docLabel / partyLabel.
+ */
 export function InvoiceTemplate({
   data,
-  template,
   docLabel = "INVOICE",
-  partyLabel = "Bill To",
+  partyLabel = "Invoice issued to",
 }: {
   data: InvoiceTemplateData;
-  template: TemplateStyle;
+  /** Accepted but ignored — there is now a single format. */
+  template?: TemplateStyle;
   docLabel?: string;
   partyLabel?: string;
 }) {
   const ccy = data.currency;
   const c = data.company;
-  const balance = data.paid !== undefined ? Number(data.total) - Number(data.paid) : undefined;
+  const paid = data.paid !== undefined ? Number(data.paid) : undefined;
+  const outstanding = paid !== undefined ? Number(data.total) - paid : undefined;
   const shipName = data.shipTo?.name || data.billTo.name;
   const hasShip = !!(data.shipTo && (data.shipTo.name || data.shipTo.address || data.shipTo.city));
-
-  const isPaid = data.paid !== undefined && Number(data.paid) >= Number(data.total) - 0.005 && Number(data.total) > 0;
+  const isPaid = paid !== undefined && paid >= Number(data.total) - 0.005 && Number(data.total) > 0;
+  const discount = Number(data.discount ?? 0);
+  const shipping = Number(data.shipping ?? 0);
 
   return (
-    <div className={`invoice-doc tpl-${template}`} style={{ position: "relative" }}>
+    <div className="invoice-doc" style={{ position: "relative" }}>
       {isPaid && <div className="inv-paid-stamp">PAID</div>}
+
       <header className="inv-top">
         <div className="inv-brand">
-          {c.logo ? (
-            <img className="inv-logo-img" src={c.logo} alt="logo" />
-          ) : (
-            <div className="inv-logo">{c.name.slice(0, 1).toUpperCase()}</div>
-          )}
+          {c.logo
+            ? <img className="inv-logo-img" src={c.logo} alt="logo" />
+            : <div className="inv-logo">{c.name.slice(0, 1).toUpperCase()}</div>}
           <div>
             <div className="inv-company">{c.name}</div>
             {c.legal && <div className="inv-sub">{c.legal}</div>}
-            <div className="inv-sub">{join([c.address, c.city, c.country])}</div>
-            <div className="inv-sub">{join([c.phone, c.email])}</div>
-            {c.taxNumber && <div className="inv-sub">Tax ID: {c.taxNumber}</div>}
           </div>
         </div>
-        <div className="inv-meta">
-          <div className="inv-title">{docLabel}</div>
-          <table className="inv-meta-tbl">
-            <tbody>
-              <tr><td>{docLabel === "INVOICE" ? "Invoice #" : "Number"}</td><td><strong>{data.number}</strong></td></tr>
-              <tr><td>Date</td><td>{data.date}</td></tr>
-              {data.dueDate && <tr><td>Due</td><td>{data.dueDate}</td></tr>}
-            </tbody>
-          </table>
+        <div className="inv-company-contact">
+          {join([c.address, c.city, c.country]) && <div className="inv-sub">{join([c.address, c.city, c.country])}</div>}
+          {c.phone && <div className="inv-sub">{c.phone}</div>}
+          {c.email && <div className="inv-sub">{c.email}</div>}
+          {c.taxNumber && <div className="inv-sub">Tax ID: {c.taxNumber}</div>}
         </div>
       </header>
 
@@ -93,51 +106,101 @@ export function InvoiceTemplate({
           {data.billTo.email && <div className="inv-sub">{data.billTo.email}</div>}
           {data.billTo.taxNumber && <div className="inv-sub">Tax ID: {data.billTo.taxNumber}</div>}
         </div>
-        {hasShip && (
-          <div className="inv-party">
-            <div className="inv-label">Ship To</div>
-            <div className="inv-party-name">{shipName}</div>
-            {data.shipTo?.address && <div className="inv-sub">{data.shipTo.address}</div>}
-            {join([data.shipTo?.city, data.shipTo?.country]) && <div className="inv-sub">{join([data.shipTo?.city, data.shipTo?.country])}</div>}
-          </div>
-        )}
+        <div className="inv-party">
+          <div className="inv-label">Shipping address</div>
+          {hasShip ? (
+            <>
+              <div className="inv-party-name">{shipName}</div>
+              {data.shipTo?.address && <div className="inv-sub">{data.shipTo.address}</div>}
+              {join([data.shipTo?.city, data.shipTo?.country]) && <div className="inv-sub">{join([data.shipTo?.city, data.shipTo?.country])}</div>}
+            </>
+          ) : <div className="inv-sub">Same as {partyLabel.toLowerCase()}</div>}
+        </div>
+        <div className="inv-metabox">
+          <div className="inv-metabox-title">{docLabel}</div>
+          <div className="inv-metabox-row"><span>Number</span><strong>{data.number}</strong></div>
+          <div className="inv-metabox-row"><span>{docLabel === "INVOICE" ? "Invoice Date" : "Date"}</span><span>{data.date}</span></div>
+          {data.dueDate && <div className="inv-metabox-row"><span>Due Date</span><span>{data.dueDate}</span></div>}
+          <div className="inv-metabox-row total"><span>{docLabel === "INVOICE" ? "Invoice Total" : "Total"}</span><strong>{money(data.total, ccy)}</strong></div>
+        </div>
       </section>
 
-      <table className="inv-table">
-        <thead>
-          <tr><th style={{ width: 34 }}>#</th><th>Item / Description</th><th style={{ textAlign: "right" }}>Qty</th>
-            <th style={{ textAlign: "right" }}>Unit Price</th><th style={{ textAlign: "right" }}>Tax</th>
-            <th style={{ textAlign: "right" }}>Amount</th></tr>
-        </thead>
-        <tbody>
-          {data.lines.map((l, i) => (
-            <tr key={i}>
-              <td>{i + 1}</td><td>{l.name}</td>
-              <td style={{ textAlign: "right" }}>{l.qty}</td>
-              <td style={{ textAlign: "right" }}>{money(l.price, ccy)}</td>
-              <td style={{ textAlign: "right" }}>{money(l.tax, ccy)}</td>
-              <td style={{ textAlign: "right" }}>{money(l.amount, ccy)}</td>
+      {data.items.length > 0 && (
+        <table className="inv-table">
+          <thead>
+            <tr>
+              <th>Item</th><th>Description</th>
+              <th style={{ textAlign: "right" }}>Unit Price</th>
+              <th style={{ textAlign: "right" }}>Quantity</th>
+              <th style={{ textAlign: "right" }}>Tax</th>
+              <th style={{ textAlign: "right" }}>Line Total</th>
             </tr>
-          ))}
-          {data.lines.length === 0 && <tr><td colSpan={6} className="muted">No line items.</td></tr>}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.items.map((l, i) => (
+              <tr key={i}>
+                <td>{l.name}</td>
+                <td className="inv-sub">{l.description || "—"}</td>
+                <td style={{ textAlign: "right" }}>{money(l.price, ccy)}</td>
+                <td style={{ textAlign: "right" }}>{l.qty}</td>
+                <td style={{ textAlign: "right" }}>{money(l.tax, ccy)}</td>
+                <td style={{ textAlign: "right" }}>{money(l.amount, ccy)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {data.services.length > 0 && (
+        <table className="inv-table inv-table-services">
+          <thead>
+            <tr>
+              <th>Service</th><th>Description</th>
+              <th style={{ textAlign: "right" }}>Cost</th>
+              <th style={{ textAlign: "right" }}>Tax</th>
+              <th style={{ textAlign: "right" }}>Line Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.services.map((l, i) => (
+              <tr key={i}>
+                <td>{l.name}</td>
+                <td className="inv-sub">{l.description || "—"}</td>
+                <td style={{ textAlign: "right" }}>{money(l.price, ccy)}</td>
+                <td style={{ textAlign: "right" }}>{money(l.tax, ccy)}</td>
+                <td style={{ textAlign: "right" }}>{money(l.amount, ccy)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {data.items.length === 0 && data.services.length === 0 && (
+        <p className="muted" style={{ marginTop: 12 }}>No line items.</p>
+      )}
 
       <div className="inv-summary">
+        {data.notes && (
+          <div className="inv-notes">
+            <div className="inv-label">Notes</div>
+            <div className="inv-text">{data.notes}</div>
+          </div>
+        )}
         <div className="inv-totals">
-          <div><span>Subtotal</span><span>{money(data.subtotal, ccy)}</span></div>
-          {Number(data.discount ?? 0) > 0 && <div><span>Discount</span><span>−{money(data.discount, ccy)}</span></div>}
-          <div><span>Tax</span><span>{money(data.taxTotal, ccy)}</span></div>
-          {Number(data.shipping ?? 0) > 0 && <div><span>Shipping</span><span>{money(data.shipping, ccy)}</span></div>}
+          <div><span>Net</span><span>{money(data.subtotal, ccy)}</span></div>
+          {discount > 0 && <div><span>Discount</span><span>−{money(discount, ccy)}</span></div>}
+          <div><span>Subtotal</span><span>{money(Number(data.subtotal) - discount, ccy)}</span></div>
+          {data.taxLines.map((t, i) => (
+            <div key={i}><span>{t.label}</span><span>{money(t.amount, ccy)}</span></div>
+          ))}
+          {shipping > 0 && <div><span>Shipping</span><span>{money(shipping, ccy)}</span></div>}
           <div className="inv-grand"><span>Total</span><span>{money(data.total, ccy)}</span></div>
-          {data.paid !== undefined && <div><span>Paid</span><span>{money(data.paid, ccy)}</span></div>}
-          {balance !== undefined && <div className="inv-balance"><span>Balance Due</span><span>{money(balance, ccy)}</span></div>}
+          {paid !== undefined && <div><span>Paid to Date</span><span>{money(paid, ccy)}</span></div>}
+          {outstanding !== undefined && <div className="inv-balance"><span>Outstanding</span><span>{money(outstanding, ccy)}</span></div>}
         </div>
       </div>
 
-      {data.notes && <section className="inv-block"><div className="inv-label">Notes</div><div className="inv-text">{data.notes}</div></section>}
       {data.terms && <section className="inv-block"><div className="inv-label">Terms &amp; Conditions</div><div className="inv-text">{data.terms}</div></section>}
-
       <footer className="inv-footer">{data.footer || "Thank you for your business."}</footer>
     </div>
   );

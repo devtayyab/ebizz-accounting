@@ -10,10 +10,14 @@ import type {
 import { ITEM_TYPES, INVENTORY_MOVEMENT_TYPES } from "@ebizz/shared";
 import { api, ApiError } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
+import { useConfirm } from "../state/ConfirmContext";
 import { Modal } from "../components/Modal";
 import { money, stockStatus } from "../lib/format";
 import { EmptyCell } from "../components/Empty";
 import { Pagination } from "../components/Pagination";
+import { useDebounced } from "../lib/useDebounced";
+import { SortHeader } from "../components/SortHeader";
+import { ExportButtons } from "../components/ExportButtons";
 
 interface Location {
   id: string;
@@ -23,16 +27,31 @@ interface Location {
 export function ItemsPage() {
   const { activeCompanyId } = useCompany();
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState<Item | null>(null);
   const [creating, setCreating] = useState(false);
   const [moving, setMoving] = useState<Item | null>(null);
   const [tracing, setTracing] = useState<Item | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [search, setSearch] = useState("");
+  const q = useDebounced(search.trim());
+  const [sort, setSort] = useState("name");
+  const [dir, setDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = (col: string) => {
+    if (sort === col) setDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSort(col); setDir("asc"); }
+    setPage(1);
+  };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["items", activeCompanyId, page, pageSize],
-    queryFn: () => api.get<Paginated<Item>>(`/items?page=${page}&page_size=${pageSize}`),
+    queryKey: ["items", activeCompanyId, page, pageSize, q, sort, dir],
+    queryFn: () =>
+      api.get<Paginated<Item>>(
+        `/items?page=${page}&page_size=${pageSize}&sort=${sort}&dir=${dir}` +
+          (q ? `&q=${encodeURIComponent(q)}` : ""),
+      ),
     enabled: !!activeCompanyId,
   });
   const { data: valuation } = useQuery({
@@ -47,14 +66,44 @@ export function ItemsPage() {
     mutationFn: (id: string) => api.delete(`/items/${id}`),
     onSuccess: invalidate,
   });
+  const askDelete = (it: Item) =>
+    confirm({
+      title: "Delete item",
+      message: `Delete “${it.name}”? This cannot be undone from here (it moves to the Recycle Bin).`,
+      confirmLabel: "Delete",
+      danger: true,
+    }).then((ok) => ok && remove.mutate(it.id));
 
   return (
     <div>
       <div className="page-head">
         <h1>Items &amp; Inventory</h1>
-        <button className="primary" onClick={() => setCreating(true)}>
-          + New item
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={data?.data ?? []}
+            filename="items"
+            title="Items & Inventory"
+            columns={[
+              { header: "SKU", value: (i) => i.sku },
+              { header: "Name", value: (i) => i.name },
+              { header: "Type", value: (i) => i.type },
+              { header: "Unit", value: (i) => i.unit },
+              { header: "Purchase price", value: (i) => i.purchase_price ?? "" },
+              { header: "Sale price", value: (i) => i.sale_price ?? "" },
+              { header: "On hand", value: (i) => (i.track_inventory ? Number(onHand(i.id) ?? 0) : "") },
+            ]}
+          />
+          <input
+            type="search"
+            placeholder="Search name or SKU…"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            style={{ width: 240 }}
+          />
+          <button className="primary" onClick={() => setCreating(true)}>
+            + New item
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -64,12 +113,12 @@ export function ItemsPage() {
           <table>
             <thead>
               <tr>
-                <th>SKU</th>
-                <th>Name</th>
+                <SortHeader label="SKU" col="sku" sort={sort} dir={dir} onSort={toggleSort} />
+                <SortHeader label="Name" col="name" sort={sort} dir={dir} onSort={toggleSort} />
                 <th>Type</th>
                 <th>Unit</th>
-                <th style={{ textAlign: "right" }}>Purchase price</th>
-                <th style={{ textAlign: "right" }}>Sale price</th>
+                <SortHeader label="Purchase price" col="purchase_price" sort={sort} dir={dir} onSort={toggleSort} align="right" />
+                <SortHeader label="Sale price" col="sale_price" sort={sort} dir={dir} onSort={toggleSort} align="right" />
                 <th style={{ textAlign: "right" }}>On hand</th>
                 <th>Status</th>
                 <th />
@@ -107,7 +156,7 @@ export function ItemsPage() {
                     <button className="link" onClick={() => setEditing(it)}>
                       Edit
                     </button>
-                    <button className="link danger" onClick={() => remove.mutate(it.id)}>
+                    <button className="link danger" onClick={() => askDelete(it)}>
                       Delete
                     </button>
                   </td>

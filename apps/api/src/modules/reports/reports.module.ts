@@ -144,6 +144,47 @@ class ReportsService {
     return data ?? [];
   }
 
+  /** Most recent documents across invoices/bills/payments/expenses for the dashboard feed. */
+  async recentActivity(companyId: string) {
+    const [inv, bill, pay, exp] = await Promise.all([
+      this.db.from("sales_invoices").select("id, invoice_number, total, currency, created_at").eq("company_id", companyId).is("deleted_at", null).order("created_at", { ascending: false }).limit(8),
+      this.db.from("purchase_bills").select("id, bill_number, total, currency, created_at").eq("company_id", companyId).is("deleted_at", null).order("created_at", { ascending: false }).limit(8),
+      this.db.from("payments").select("id, amount, currency, party_type, created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(8),
+      this.db.from("expenses").select("id, memo, total, currency, created_at").eq("company_id", companyId).is("deleted_at", null).order("created_at", { ascending: false }).limit(8),
+    ]);
+    for (const r of [inv, bill, pay, exp]) if (r.error) throw new BadRequestException(pgMessage(r.error));
+    type Row = { type: string; label: string; sub: string; amount: string; currency: string; created_at: string; link?: string };
+    const rows: Row[] = [];
+    for (const r of (inv.data ?? []) as Record<string, string>[])
+      rows.push({ type: "invoice", label: r.invoice_number, sub: "Sales invoice", amount: r.total, currency: r.currency, created_at: r.created_at, link: `/invoices/${r.id}/print` });
+    for (const r of (bill.data ?? []) as Record<string, string>[])
+      rows.push({ type: "bill", label: r.bill_number, sub: "Purchase bill", amount: r.total, currency: r.currency, created_at: r.created_at, link: `/bills/${r.id}/print` });
+    for (const r of (pay.data ?? []) as Record<string, string>[])
+      rows.push({ type: "payment", label: r.party_type === "supplier" ? "Payment sent" : "Payment received", sub: "Payment", amount: r.amount, currency: r.currency, created_at: r.created_at });
+    for (const r of (exp.data ?? []) as Record<string, string>[])
+      rows.push({ type: "expense", label: r.memo || "Expense", sub: "Expense", amount: r.total, currency: r.currency, created_at: r.created_at });
+    return rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 12);
+  }
+
+  private async rpc(fn: string, params: Record<string, unknown>) {
+    const { data, error } = await this.db.rpc(fn, params);
+    if (error) throw new BadRequestException(pgMessage(error));
+    return data ?? [];
+  }
+
+  taxSummary(companyId: string, from?: string, to?: string) {
+    return this.rpc("report_tax_summary", { p_company: companyId, p_from: from ?? null, p_to: to ?? null });
+  }
+  dayBook(companyId: string, from?: string, to?: string) {
+    return this.rpc("report_day_book", { p_company: companyId, p_from: from ?? null, p_to: to ?? null });
+  }
+  salesRegister(companyId: string, from?: string, to?: string) {
+    return this.rpc("report_sales_register", { p_company: companyId, p_from: from ?? null, p_to: to ?? null });
+  }
+  purchaseRegister(companyId: string, from?: string, to?: string) {
+    return this.rpc("report_purchase_register", { p_company: companyId, p_from: from ?? null, p_to: to ?? null });
+  }
+
   async aging(companyId: string, kind: "ar" | "ap", asOf?: string): Promise<AgingRow[]> {
     const fn = kind === "ar" ? "report_ar_aging" : "report_ap_aging";
     const { data, error } = await this.db.rpc(fn, { p_company: companyId, p_as_of: asOf ?? new Date().toISOString().slice(0, 10) });
@@ -208,9 +249,34 @@ class ReportsController {
     return this.svc.inventoryValuation(companyId);
   }
 
+  @Get("recent-activity")
+  recentActivity(@CompanyId() companyId: string) {
+    return this.svc.recentActivity(companyId);
+  }
+
   @Get("low-stock")
   lowStock(@CompanyId() companyId: string) {
     return this.svc.lowStock(companyId);
+  }
+
+  @Get("tax-summary")
+  taxSummary(@CompanyId() companyId: string, @Query("from") from?: string, @Query("to") to?: string) {
+    return this.svc.taxSummary(companyId, from, to);
+  }
+
+  @Get("day-book")
+  dayBook(@CompanyId() companyId: string, @Query("from") from?: string, @Query("to") to?: string) {
+    return this.svc.dayBook(companyId, from, to);
+  }
+
+  @Get("sales-register")
+  salesRegister(@CompanyId() companyId: string, @Query("from") from?: string, @Query("to") to?: string) {
+    return this.svc.salesRegister(companyId, from, to);
+  }
+
+  @Get("purchase-register")
+  purchaseRegister(@CompanyId() companyId: string, @Query("from") from?: string, @Query("to") to?: string) {
+    return this.svc.purchaseRegister(companyId, from, to);
   }
 
   @Get("customer-statement")

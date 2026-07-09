@@ -19,6 +19,8 @@ import { DebitNotesModule } from "./modules/debit-notes/debit-notes.module";
 import { JournalEntriesModule } from "./modules/journal-entries/journal-entries.module";
 import { ExpensesModule } from "./modules/expenses/expenses.module";
 import { FundsModule } from "./modules/funds/funds.module";
+import { DocumentsModule } from "./modules/documents/documents.module";
+import { RecycleBinModule } from "./modules/recycle-bin/recycle-bin.module";
 import { AccessModule } from "./modules/access/access.module";
 
 @Module({
@@ -42,6 +44,8 @@ import { AccessModule } from "./modules/access/access.module";
     JournalEntriesModule,
     ExpensesModule,
     FundsModule,
+    DocumentsModule,
+    RecycleBinModule,
     AccessModule,
   ],
   controllers: [HealthController],

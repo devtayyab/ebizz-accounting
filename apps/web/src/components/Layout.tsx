@@ -38,6 +38,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: "/general-ledger", label: "General Ledger" },
     { to: "/statements", label: "Statements" },
     { to: "/reports", label: "Reports" },
+    { to: "/recycle-bin", label: "Recycle Bin" },
     { to: "/accounting", label: "Setup" },
   ] },
 ];
