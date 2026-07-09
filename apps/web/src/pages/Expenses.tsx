@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Account, Expense, Supplier, Paginated } from "@ebizz/shared";
 import { api, ApiError } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
+import { useConfirm } from "../state/ConfirmContext";
 import { Modal } from "../components/Modal";
 import { CurrencyRate, fxRateInvalid } from "../components/CurrencyRate";
 import { money } from "../lib/format";
@@ -11,7 +12,9 @@ import { EmptyCell } from "../components/Empty";
 export function ExpensesPage() {
   const { activeCompanyId, activeCompany } = useCompany();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const confirm = useConfirm();
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Expense | null>(null);
   const ccy = activeCompany?.base_currency ?? "USD";
 
   const { data, isLoading } = useQuery({
@@ -29,11 +32,25 @@ export function ExpensesPage() {
     return a ? `${a.code} ${a.name}` : "—";
   };
 
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["expenses"] });
+    qc.invalidateQueries({ queryKey: ["reports"] });
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/expenses/${id}`),
+    onSuccess: invalidate, meta: { successMessage: "Expense deleted" },
+  });
+  const reversePayment = useMutation({
+    mutationFn: (id: string) => api.post(`/expenses/${id}/reverse-payment`),
+    onSuccess: invalidate, meta: { successMessage: "Payment reversed — expense is now payable" },
+  });
+
   return (
     <div>
       <div className="page-head">
         <h1>Expenses</h1>
-        <button className="primary" onClick={() => setOpen(true)}>+ Record expense</button>
+        <button className="primary" onClick={() => setCreating(true)}>+ Record expense</button>
       </div>
       <div className="card">
         <p className="muted" style={{ marginTop: 0 }}>
@@ -42,7 +59,7 @@ export function ExpensesPage() {
         </p>
         {isLoading ? <p className="muted">Loading…</p> : (
           <table>
-            <thead><tr><th>Date</th><th>Category</th><th>Memo</th><th>Amount</th><th>Tax</th><th>Total</th><th>Status</th></tr></thead>
+            <thead><tr><th>Date</th><th>Category</th><th>Memo</th><th>Amount</th><th>Tax</th><th>Total</th><th>Status</th><th /></tr></thead>
             <tbody>
               {(data ?? []).map((e) => (
                 <tr key={e.id}>
@@ -53,38 +70,50 @@ export function ExpensesPage() {
                   <td>{money(e.tax_amount, e.currency)}</td>
                   <td>{money(e.total, e.currency)}</td>
                   <td><span className={`badge ${e.payment_status === "paid" ? "" : "off"}`}>{e.payment_status}</span></td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <button className="link" onClick={() => setEditing(e)}>Edit</button>
+                    {e.payment_status === "paid" && (
+                      <button className="link" onClick={() => confirm({
+                        title: "Reverse payment",
+                        message: `Reverse the payment for this expense? It stays recorded in your P&L but becomes payable (Dr cash / Cr Accounts Payable).`,
+                        confirmLabel: "Reverse payment",
+                      }).then((ok) => ok && reversePayment.mutate(e.id))}>Reverse payment</button>
+                    )}
+                    <button className="link danger" onClick={() => confirm({
+                      title: "Delete expense",
+                      message: `Delete this expense? Its ledger entry will be reversed so your books stay balanced.`,
+                      confirmLabel: "Delete", danger: true,
+                    }).then((ok) => ok && remove.mutate(e.id))}>Delete</button>
+                  </td>
                 </tr>
               ))}
-              {data?.length === 0 && <tr><td colSpan={7}><EmptyCell>No expenses recorded yet.</EmptyCell></td></tr>}
+              {data?.length === 0 && <tr><td colSpan={8}><EmptyCell>No expenses recorded yet.</EmptyCell></td></tr>}
             </tbody>
           </table>
         )}
       </div>
-      {open && <ExpenseForm companyId={activeCompanyId!} ccy={ccy} accounts={accounts ?? []}
-        onClose={() => setOpen(false)}
-        onSaved={() => {
-          qc.invalidateQueries({ queryKey: ["expenses"] });
-          qc.invalidateQueries({ queryKey: ["reports"] });
-          setOpen(false);
-        }} />}
+      {(creating || editing) && <ExpenseForm companyId={activeCompanyId!} ccy={ccy} accounts={accounts ?? []}
+        expense={editing}
+        onClose={() => { setCreating(false); setEditing(null); }}
+        onSaved={() => { invalidate(); setCreating(false); setEditing(null); }} />}
     </div>
   );
 }
 
-function ExpenseForm({ companyId, ccy, accounts, onClose, onSaved }: {
-  companyId: string; ccy: string; accounts: Account[]; onClose: () => void; onSaved: () => void;
+function ExpenseForm({ companyId, ccy, accounts, expense, onClose, onSaved }: {
+  companyId: string; ccy: string; accounts: Account[]; expense?: Expense | null; onClose: () => void; onSaved: () => void;
 }) {
   const qc = useQueryClient();
-  const [category, setCategory] = useState("");
-  const [amount, setAmount] = useState("");
-  const [tax, setTax] = useState("");
-  const [paidAccount, setPaidAccount] = useState("");
-  const [supplierId, setSupplierId] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [memo, setMemo] = useState("");
-  const [unpaid, setUnpaid] = useState(false);
-  const [docCurrency, setDocCurrency] = useState(ccy);
-  const [fxRate, setFxRate] = useState("1");
+  const [category, setCategory] = useState(expense?.category_account_id ?? "");
+  const [amount, setAmount] = useState(expense ? String(expense.amount) : "");
+  const [tax, setTax] = useState(expense && Number(expense.tax_amount) ? String(expense.tax_amount) : "");
+  const [paidAccount, setPaidAccount] = useState(expense?.paid_account_id ?? "");
+  const [supplierId, setSupplierId] = useState(expense?.supplier_id ?? "");
+  const [date, setDate] = useState(expense?.expense_date ?? new Date().toISOString().slice(0, 10));
+  const [memo, setMemo] = useState(expense?.memo ?? "");
+  const [unpaid, setUnpaid] = useState(expense?.payment_status === "unpaid");
+  const [docCurrency, setDocCurrency] = useState(expense?.currency ?? ccy);
+  const [fxRate, setFxRate] = useState(expense ? String(expense.fx_rate ?? "1") : "1");
   const [error, setError] = useState<string | null>(null);
   const foreign = docCurrency !== ccy;
   const [addingCat, setAddingCat] = useState(false);
@@ -115,19 +144,25 @@ function ExpenseForm({ companyId, ccy, accounts, onClose, onSaved }: {
   });
 
   const save = useMutation({
-    mutationFn: () => api.post("/expenses", {
-      company_id: companyId, category_account_id: category, amount,
-      tax_amount: tax || undefined, expense_date: date, memo: memo || undefined,
-      paid_account_id: unpaid ? undefined : paidAccount,
-      supplier_id: unpaid ? (supplierId || undefined) : undefined,
-      currency: docCurrency, fx_rate: foreign ? String(Number(fxRate) || 1) : "1",
-    }),
+    mutationFn: () => {
+      const body = {
+        category_account_id: category, amount,
+        tax_amount: tax || undefined, expense_date: date, memo: memo || undefined,
+        paid_account_id: unpaid ? undefined : paidAccount,
+        supplier_id: unpaid ? (supplierId || undefined) : undefined,
+        currency: docCurrency, fx_rate: foreign ? String(Number(fxRate) || 1) : "1",
+      };
+      return expense
+        ? api.patch(`/expenses/${expense.id}`, body)
+        : api.post("/expenses", { company_id: companyId, ...body });
+    },
     onSuccess: onSaved,
     onError: (e) => setError(e instanceof ApiError ? e.message : "Failed"),
+    meta: { successMessage: expense ? "Expense updated" : "Expense recorded" },
   });
 
   return (
-    <Modal title="Record expense" onClose={onClose} width={560}>
+    <Modal title={expense ? "Edit expense" : "Record expense"} onClose={onClose} width={560}>
       <div className="grid-2">
         <div className="field"><label>Category (expense account) *</label>
           <select value={category} onChange={(e) => {
