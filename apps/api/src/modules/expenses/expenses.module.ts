@@ -46,7 +46,8 @@ class ExpensesService {
 
   async list(companyId: string): Promise<Expense[]> {
     const { data, error } = await this.db
-      .from("expenses").select("*").eq("company_id", companyId).order("expense_date", { ascending: false });
+      .from("expenses").select("*").eq("company_id", companyId).is("deleted_at", null)
+      .order("expense_date", { ascending: false });
     if (error) throw new BadRequestException(pgMessage(error));
     return (data ?? []) as Expense[];
   }
@@ -102,15 +103,9 @@ class ExpensesService {
     return this.get(id);
   }
 
-  /** Delete: neutralise the ledger (mirror the JE) then remove the row. */
+  /** Soft-delete: neutralise the ledger and move the expense to the Recycle Bin. */
   async remove(id: string): Promise<void> {
-    const { data: exp, error: getErr } = await this.db
-      .from("expenses").select("id").eq("id", id).maybeSingle();
-    if (getErr) throw new BadRequestException(pgMessage(getErr));
-    if (!exp) throw new NotFoundException("Expense not found");
-    const { error: revErr } = await this.db.rpc("reverse_expense", { p_id: id });
-    if (revErr) throw new BadRequestException(pgMessage(revErr));
-    const { error } = await this.db.from("expenses").delete().eq("id", id);
+    const { error } = await this.db.rpc("soft_delete_record", { p_type: "expense", p_id: id });
     if (error) throw new BadRequestException(pgMessage(error));
   }
 }

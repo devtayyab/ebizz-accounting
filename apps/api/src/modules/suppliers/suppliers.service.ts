@@ -22,6 +22,7 @@ export class SuppliersService {
       .from("suppliers")
       .select("*", { count: "exact" })
       .eq("company_id", companyId)
+      .is("deleted_at", null)
       .order("name", { ascending: true })
       .range(from, to);
 
@@ -73,8 +74,9 @@ export class SuppliersService {
     return data as Supplier;
   }
 
+  /** Soft-delete: moves the supplier to the Recycle Bin. */
   async remove(id: string): Promise<void> {
-    const { error } = await this.db.from("suppliers").delete().eq("id", id);
+    const { error } = await this.db.rpc("soft_delete_record", { p_type: "supplier", p_id: id });
     if (error) throw new BadRequestException(pgMessage(error));
   }
 }

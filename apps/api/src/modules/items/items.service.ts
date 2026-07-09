@@ -38,6 +38,7 @@ export class ItemsService {
       .from("items")
       .select("*", { count: "exact" })
       .eq("company_id", companyId)
+      .is("deleted_at", null)
       .order(sort, { ascending: query.dir !== "desc" })
       .range(from, to);
 
@@ -88,13 +89,10 @@ export class ItemsService {
     return data as Item;
   }
 
+  /** Soft-delete: moves the item to the Recycle Bin (keeps stock history intact). */
   async remove(id: string): Promise<void> {
-    const { error } = await this.db.from("items").delete().eq("id", id);
-    if (error) {
-      throw new BadRequestException(
-        "This item can't be deleted because it has stock movements or appears on documents. Mark it inactive instead (edit the item and untick Active).",
-      );
-    }
+    const { error } = await this.db.rpc("soft_delete_record", { p_type: "item", p_id: id });
+    if (error) throw new BadRequestException(pgMessage(error));
   }
 
   // --- sourcing: item <-> suppliers -----------------------------------------

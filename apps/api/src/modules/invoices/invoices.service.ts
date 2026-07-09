@@ -38,6 +38,7 @@ export class InvoicesService {
       .from("sales_invoices")
       .select("*", { count: "exact" })
       .eq("company_id", companyId)
+      .is("deleted_at", null)
       .order("invoice_date", { ascending: false })
       .range(from, to);
     if (query.q) q = q.ilike("invoice_number", `%${query.q}%`);
@@ -251,19 +252,11 @@ export class InvoicesService {
     return acct.id;
   }
 
+  /** Soft-delete: reverses the ledger effect and moves the invoice to the Recycle Bin. */
   async remove(id: string): Promise<void> {
-    const existing = await this.get(id);
-    if (existing.status === "posted") {
-      if (Number(existing.amount_paid) > 0) {
-        throw new BadRequestException("Reverse the payments before deleting this invoice");
-      }
-      // void the ledger effect first, then remove the document
-      const { error: revErr } = await this.db.rpc("reverse_document", { p_type: "invoice", p_id: id });
-      if (revErr) throw new BadRequestException(pgMessage(revErr));
-    }
+    const { error } = await this.db.rpc("soft_delete_record", { p_type: "invoice", p_id: id });
+    if (error) throw new BadRequestException(pgMessage(error));
     // release any sales order that was converted into this invoice
     await this.db.from("sales_orders").update({ invoice_id: null, status: "open" }).eq("invoice_id", id);
-    const { error } = await this.db.from("sales_invoices").delete().eq("id", id);
-    if (error) throw new BadRequestException(pgMessage(error));
   }
 }

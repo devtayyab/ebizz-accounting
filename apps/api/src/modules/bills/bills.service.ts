@@ -58,6 +58,7 @@ export class BillsService {
       .from("purchase_bills")
       .select("*", { count: "exact" })
       .eq("company_id", companyId)
+      .is("deleted_at", null)
       .order("bill_date", { ascending: false })
       .range(from, to);
     if (query.q) q = q.ilike("bill_number", `%${query.q}%`);
@@ -202,18 +203,11 @@ export class BillsService {
     return this.get(id);
   }
 
+  /** Soft-delete: reverses the ledger effect and moves the bill to the Recycle Bin. */
   async remove(id: string): Promise<void> {
-    const existing = await this.get(id);
-    if (existing.status === "posted") {
-      if (Number(existing.amount_paid) > 0) {
-        throw new BadRequestException("Reverse the payments before deleting this bill");
-      }
-      const { error: revErr } = await this.db.rpc("reverse_document", { p_type: "bill", p_id: id });
-      if (revErr) throw new BadRequestException(pgMessage(revErr));
-    }
+    const { error } = await this.db.rpc("soft_delete_record", { p_type: "bill", p_id: id });
+    if (error) throw new BadRequestException(pgMessage(error));
     // release any purchase order that was converted into this bill
     await this.db.from("purchase_orders").update({ bill_id: null, status: "open" }).eq("bill_id", id);
-    const { error } = await this.db.from("purchase_bills").delete().eq("id", id);
-    if (error) throw new BadRequestException(pgMessage(error));
   }
 }

@@ -22,6 +22,7 @@ export class CustomersService {
       .from("customers")
       .select("*", { count: "exact" })
       .eq("company_id", companyId)
+      .is("deleted_at", null)
       .order("name", { ascending: true })
       .range(from, to);
 
@@ -72,8 +73,9 @@ export class CustomersService {
     return data as Customer;
   }
 
+  /** Soft-delete: moves the customer to the Recycle Bin. */
   async remove(id: string): Promise<void> {
-    const { error } = await this.db.from("customers").delete().eq("id", id);
+    const { error } = await this.db.rpc("soft_delete_record", { p_type: "customer", p_id: id });
     if (error) throw new BadRequestException(pgMessage(error));
   }
 }
