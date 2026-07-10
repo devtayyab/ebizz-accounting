@@ -1,4 +1,3 @@
-import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -7,17 +6,26 @@ export interface ExportColumn<T> {
   value: (row: T) => string | number;
 }
 
-/** Download the rows as an .xlsx workbook. */
-export function exportToExcel<T>(rows: T[], columns: ExportColumn<T>[], filename: string) {
-  const data = rows.map((r) => {
-    const o: Record<string, string | number> = {};
-    for (const c of columns) o[c.header] = c.value(r);
-    return o;
-  });
-  const ws = XLSX.utils.json_to_sheet(data, { header: columns.map((c) => c.header) });
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Data");
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+/** Quote a CSV cell only when it contains a comma, quote, or newline. */
+function csvCell(v: string | number): string {
+  const s = String(v ?? "");
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** Download the rows as a .csv file (opens in Excel / Google Sheets). */
+export function exportToCsv<T>(rows: T[], columns: ExportColumn<T>[], filename: string) {
+  const header = columns.map((c) => csvCell(c.header)).join(",");
+  const body = rows.map((r) => columns.map((c) => csvCell(c.value(r))).join(",")).join("\r\n");
+  // Prepend a BOM so Excel detects UTF-8 (correct accents / currency symbols).
+  const blob = new Blob(["﻿" + header + "\r\n" + body], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 /** Download the rows as a PDF table (landscape when there are many columns). */

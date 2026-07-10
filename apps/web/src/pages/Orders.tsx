@@ -11,6 +11,7 @@ import { EditableLine, LineItemsEditor, emptyLine, lineTotals } from "../compone
 import { CurrencyRate, fxRateInvalid } from "../components/CurrencyRate";
 import { money } from "../lib/format";
 import { EmptyCell } from "../components/Empty";
+import { ExportButtons } from "../components/ExportButtons";
 
 interface OrderRow {
   id: string;
@@ -53,7 +54,21 @@ function OrdersPage({ kind }: { kind: "sales" | "purchase" }) {
     <div>
       <div className="page-head">
         <h1>{title}</h1>
-        <button className="primary" onClick={() => setOpen(true)}>+ New {kind === "sales" ? "order" : "PO"}</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={data ?? []}
+            filename={kind === "sales" ? "sales-orders" : "purchase-orders"}
+            title={title}
+            columns={[
+              { header: "Number", value: (o) => o.order_number },
+              { header: "Date", value: (o) => o.order_date },
+              { header: "Currency", value: (o) => o.currency },
+              { header: "Total", value: (o) => Number(o.total) },
+              { header: "Status", value: (o) => o.status },
+            ]}
+          />
+          <button className="primary" onClick={() => setOpen(true)}>+ New {kind === "sales" ? "order" : "PO"}</button>
+        </div>
       </div>
       <div className="card">
         {isLoading ? <p className="muted">Loading…</p> : (

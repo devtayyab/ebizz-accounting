@@ -14,6 +14,7 @@ import { money, paymentStatus } from "../lib/format";
 import { EmptyCell } from "../components/Empty";
 import { Pagination } from "../components/Pagination";
 import { ExportButtons } from "../components/ExportButtons";
+import { DocumentPaymentModal } from "../components/DocumentPaymentModal";
 
 export function BillsPage() {
   const { activeCompanyId, activeCompany } = useCompany();
@@ -46,7 +47,7 @@ export function BillsPage() {
   const remove = useMutation({ mutationFn: (id: string) => api.delete(`/bills/${id}`), onSuccess: invalidate, meta: { successMessage: "Bill deleted" } });
   const reverse = useMutation({ mutationFn: (id: string) => api.post(`/bills/${id}/reverse`), onSuccess: invalidate, meta: { successMessage: "Bill voided" } });
   const restore = useMutation({ mutationFn: (id: string) => api.post(`/bills/${id}/restore`), onSuccess: invalidate, meta: { successMessage: "Bill restored" } });
-  const markPaid = useMutation({ mutationFn: (id: string) => api.post(`/bills/${id}/mark-paid`), onSuccess: invalidate, meta: { successMessage: "Bill marked as paid" } });
+  const [payFor, setPayFor] = useState<PurchaseBill | null>(null);
   const revise = useMutation({
     mutationFn: (id: string) => api.post(`/bills/${id}/revise`),
     onSuccess: (_data, id) => { invalidate(); setEditId(id); setEditorOpen(true); },
@@ -102,7 +103,7 @@ export function BillsPage() {
                         <button className="link" onClick={() => ask({ title: "Edit posted bill", message: `Editing ${b.bill_number} will un-post it (reverse its ledger entry) so you can change it, then re-post.`, confirmLabel: "Un-post & edit" }).then((ok) => ok && revise.mutate(b.id))}>Edit</button>
                       )}
                       {b.status === "posted" && Number(b.total) - Number(b.amount_paid) > 0.005 && (
-                        <button className="link" onClick={() => ask({ title: "Mark as paid", message: `Record a payment for the full balance of ${b.bill_number} from your default cash/bank account?`, confirmLabel: "Mark paid" }).then((ok) => ok && markPaid.mutate(b.id))}>Mark paid</button>
+                        <button className="link" onClick={() => setPayFor(b)}>Pay</button>
                       )}
                       {b.status === "posted" && Number(b.amount_paid) === 0 && (
                         <button className="link danger" onClick={() => ask({ title: "Void bill", message: `Void ${b.bill_number}? A reversing journal entry will be posted and stock returned.`, confirmLabel: "Void", danger: true }).then((ok) => ok && reverse.mutate(b.id))}>Void</button>
@@ -127,6 +128,18 @@ export function BillsPage() {
       {editorOpen && (
         <BillEditor companyId={activeCompanyId!} currency={ccy} billId={editId}
           onClose={() => setEditorOpen(false)} onSaved={() => { invalidate(); setEditorOpen(false); }} />
+      )}
+      {payFor && (
+        <DocumentPaymentModal
+          doc={{
+            kind: "bill", id: payFor.id, number: payFor.bill_number,
+            companyId: payFor.company_id, partyId: payFor.supplier_id,
+            total: payFor.total, amountPaid: payFor.amount_paid,
+            currency: payFor.currency, fxRate: payFor.fx_rate,
+          }}
+          onClose={() => setPayFor(null)}
+          onSaved={() => { invalidate(); setPayFor(null); }}
+        />
       )}
     </div>
   );

@@ -7,6 +7,7 @@ import { useConfirm } from "../state/ConfirmContext";
 import { Modal } from "../components/Modal";
 import { money, statusBadge } from "../lib/format";
 import { EmptyCell } from "../components/Empty";
+import { ExportButtons } from "../components/ExportButtons";
 import { Pagination } from "../components/Pagination";
 
 interface JLine { account_id: string; description: string; debit: string; credit: string }
@@ -38,7 +39,20 @@ export function JournalsPage() {
     <div>
       <div className="page-head">
         <h1>Manual Journal Entries</h1>
-        <button className="primary" onClick={() => setOpen(true)}>+ New journal</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={rows}
+            filename="journal-entries"
+            title="Manual Journal Entries"
+            columns={[
+              { header: "Date", value: (e) => e.entry_date },
+              { header: "Memo", value: (e) => e.memo ?? "" },
+              { header: "Source", value: (e) => e.source_type ?? "" },
+              { header: "Status", value: (e) => e.status },
+            ]}
+          />
+          <button className="primary" onClick={() => setOpen(true)}>+ New journal</button>
+        </div>
       </div>
       <div className="card">
         {isLoading ? <p className="muted">Loading…</p> : (

@@ -8,6 +8,7 @@ import { useConfirm } from "../state/ConfirmContext";
 import { Modal } from "../components/Modal";
 import { Pagination } from "../components/Pagination";
 import { EmptyCell } from "../components/Empty";
+import { ExportButtons } from "../components/ExportButtons";
 
 export function AccountsPage() {
   const { activeCompanyId } = useCompany();
@@ -72,7 +73,20 @@ export function AccountsPage() {
         <div className="card">
           <div className="page-head">
             <h3 style={{ margin: 0 }}>Chart of Accounts</h3>
-            <button onClick={() => setAddAcct(true)}>+ Add account</button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <ExportButtons
+                rows={accounts ?? []}
+                filename="chart-of-accounts"
+                title="Chart of Accounts"
+                columns={[
+                  { header: "Code", value: (a) => a.code },
+                  { header: "Name", value: (a) => a.name },
+                  { header: "Type", value: (a) => a.type },
+                  { header: "Status", value: (a) => (a.is_active ? "Active" : "Inactive") },
+                ]}
+              />
+              <button onClick={() => setAddAcct(true)}>+ Add account</button>
+            </div>
           </div>
           <table>
             <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Status</th><th /></tr></thead>
@@ -101,7 +115,19 @@ export function AccountsPage() {
         <div className="card">
           <div className="page-head">
             <h3 style={{ margin: 0 }}>Tax Rates</h3>
-            <button onClick={() => setAddTax(true)}>+ Add tax rate</button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <ExportButtons
+                rows={taxRates ?? []}
+                filename="tax-rates"
+                title="Tax Rates"
+                columns={[
+                  { header: "Name", value: (t) => t.name },
+                  { header: "Rate", value: (t) => `${(Number(t.rate) * 100).toFixed(2)}%` },
+                  { header: "Status", value: (t) => (t.is_active ? "Active" : "Inactive") },
+                ]}
+              />
+              <button onClick={() => setAddTax(true)}>+ Add tax rate</button>
+            </div>
           </div>
           <table>
             <thead><tr><th>Name</th><th>Rate</th><th>Status</th><th /></tr></thead>

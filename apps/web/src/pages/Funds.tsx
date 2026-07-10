@@ -7,6 +7,7 @@ import { useConfirm } from "../state/ConfirmContext";
 import { Modal } from "../components/Modal";
 import { CurrencyRate, fxRateInvalid } from "../components/CurrencyRate";
 import { EmptyCell } from "../components/Empty";
+import { ExportButtons } from "../components/ExportButtons";
 import { money } from "../lib/format";
 
 interface FundAccount { id: string; name: string; description: string | null; is_active: boolean; balance: number; gl_account_id: string | null }
@@ -70,7 +71,19 @@ export function FundsPage() {
     <div>
       <div className="page-head">
         <h1>Funds &amp; Advances</h1>
-        <button className="primary" onClick={() => setFundForm({ fund: null })}>+ New fund account</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={funds ?? []}
+            filename="fund-accounts"
+            title="Fund Accounts"
+            columns={[
+              { header: "Name", value: (f) => f.name },
+              { header: "Description", value: (f) => f.description ?? "" },
+              { header: "Balance", value: (f) => Number(f.balance) },
+            ]}
+          />
+          <button className="primary" onClick={() => setFundForm({ fund: null })}>+ New fund account</button>
+        </div>
       </div>
       <div className="card" style={{ marginBottom: 20 }}>
         <p className="muted" style={{ marginTop: 0 }}>
@@ -105,7 +118,22 @@ export function FundsPage() {
         <div className="card">
           <div className="page-head">
             <h3 style={{ margin: 0 }}>{selected.name} — transactions</h3>
-            <button className="primary" onClick={() => setTxModal({ fund: selected, tx: null })}>+ Add transaction</button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <ExportButtons
+                rows={txs ?? []}
+                filename="fund-transactions"
+                title={`${selected.name} — Transactions`}
+                columns={[
+                  { header: "Date", value: (t) => t.txn_date },
+                  { header: "Type", value: (t) => t.entry_type },
+                  { header: "Party", value: (t) => partyName(t) },
+                  { header: "Reference", value: (t) => t.reference ?? "" },
+                  { header: "Memo", value: (t) => t.memo ?? "" },
+                  { header: "Effect", value: (t) => effect(t) },
+                ]}
+              />
+              <button className="primary" onClick={() => setTxModal({ fund: selected, tx: null })}>+ Add transaction</button>
+            </div>
           </div>
           <table>
             <thead><tr><th>Date</th><th>Type</th><th>Party</th><th>Reference</th><th>Memo</th><th style={{ textAlign: "right" }}>Effect</th><th /></tr></thead>
