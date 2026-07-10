@@ -203,6 +203,22 @@ export class BillsService {
     return this.get(id);
   }
 
+  /**
+   * Pay a bill/deposit to a supplier THROUGH a Fund (the "payment type"). Posts a
+   * real GL payment (settles A/P against the fund's linked cash/bank account) AND
+   * records a fund payment. Amount omitted → full outstanding balance.
+   */
+  async payViaFund(id: string, fundId: string, amount?: string): Promise<PurchaseBill> {
+    const { error } = await this.db.rpc("pay_bill_via_fund", {
+      p_bill: id,
+      p_fund: fundId,
+      p_amount: amount != null && amount !== "" ? Number(amount) : null,
+      p_date: new Date().toISOString().slice(0, 10),
+    });
+    if (error) throw new BadRequestException(pgMessage(error));
+    return this.get(id);
+  }
+
   /** Soft-delete: reverses the ledger effect and moves the bill to the Recycle Bin. */
   async remove(id: string): Promise<void> {
     const { error } = await this.db.rpc("soft_delete_record", { p_type: "bill", p_id: id });

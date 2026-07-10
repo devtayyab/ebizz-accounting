@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
 import { money } from "../lib/format";
 import { EmptyCell } from "../components/Empty";
+import { ExportButtons } from "../components/ExportButtons";
 import { Pagination } from "../components/Pagination";
 
 export function GeneralLedgerPage() {
@@ -31,7 +32,25 @@ export function GeneralLedgerPage() {
 
   return (
     <div>
-      <div className="page-head"><h1>General Ledger</h1></div>
+      <div className="page-head">
+        <h1>General Ledger</h1>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={withRunning}
+            filename="general-ledger"
+            title="General Ledger"
+            columns={[
+              { header: "Date", value: (r) => r.entry_date },
+              { header: "Account", value: (r) => `${r.code} ${r.name}` },
+              { header: "Party", value: (r) => r.party ?? "" },
+              { header: "Memo", value: (r) => r.memo ?? r.source_type ?? "" },
+              { header: "Debit", value: (r) => Number(r.debit) },
+              { header: "Credit", value: (r) => Number(r.credit) },
+              { header: "Balance", value: (r) => Number(r.running) },
+            ]}
+          />
+        </div>
+      </div>
       <div className="card">
         <div className="field" style={{ maxWidth: 360 }}>
           <label>Account</label>

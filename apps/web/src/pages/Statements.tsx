@@ -4,6 +4,7 @@ import type { Customer, Paginated, StatementRow, Supplier } from "@ebizz/shared"
 import { api } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
 import { money } from "../lib/format";
+import { ExportButtons } from "../components/ExportButtons";
 import { Pagination } from "../components/Pagination";
 
 export function StatementsPage() {
@@ -38,7 +39,25 @@ export function StatementsPage() {
 
   return (
     <div>
-      <div className="page-head"><h1>Statements</h1></div>
+      <div className="page-head">
+        <h1>Statements</h1>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={withBalance}
+            filename={`${kind}-statement`}
+            title={kind === "customer" ? "Customer Statement" : "Supplier Statement"}
+            columns={[
+              { header: "Date", value: (r) => r.txn_date },
+              { header: kind === "customer" ? "Customer" : "Supplier", value: (r) => r.party_name },
+              { header: "Type", value: (r) => r.doc_type },
+              { header: "Reference", value: (r) => r.reference ?? "" },
+              { header: kind === "customer" ? "Charge" : "Bill", value: (r) => Number(r.charge) },
+              { header: kind === "customer" ? "Paid/Credit" : "Paid/Debit", value: (r) => Number(r.credit) },
+              { header: "Balance", value: (r) => Number(r.balance ?? 0) },
+            ]}
+          />
+        </div>
+      </div>
       <div className="card">
         <div className="grid-2" style={{ maxWidth: 640 }}>
           <div className="field">

@@ -17,6 +17,7 @@ import { EmptyCell } from "../components/Empty";
 import { Pagination } from "../components/Pagination";
 import { useDebounced } from "../lib/useDebounced";
 import { ExportButtons } from "../components/ExportButtons";
+import { DocumentPaymentModal } from "../components/DocumentPaymentModal";
 
 export function InvoicesPage() {
   const { activeCompanyId, activeCompany } = useCompany();
@@ -174,7 +175,16 @@ export function InvoicesPage() {
         />
       )}
       {payFor && (
-        <PaymentModal invoice={payFor} onClose={() => setPayFor(null)} onSaved={() => { invalidate(); setPayFor(null); }} />
+        <DocumentPaymentModal
+          doc={{
+            kind: "invoice", id: payFor.id, number: payFor.invoice_number,
+            companyId: payFor.company_id, partyId: payFor.customer_id,
+            total: payFor.total, amountPaid: payFor.amount_paid,
+            currency: payFor.currency, fxRate: payFor.fx_rate,
+          }}
+          onClose={() => setPayFor(null)}
+          onSaved={() => { invalidate(); setPayFor(null); }}
+        />
       )}
       {docsFor && <DocumentsModal invoice={docsFor} onClose={() => setDocsFor(null)} />}
     </div>
@@ -257,84 +267,6 @@ function DocumentsModal({ invoice, onClose }: { invoice: SalesInvoice; onClose: 
           {!isLoading && docs?.length === 0 && <tr><td colSpan={3}><EmptyCell>No files attached yet.</EmptyCell></td></tr>}
         </tbody>
       </table>
-    </Modal>
-  );
-}
-
-interface FundOption { id: string; name: string; gl_account_id: string | null }
-
-/**
- * Receive a payment or deposit for an invoice through a Fund (the "payment type").
- * Amount can be the full balance, a fixed amount, or a percentage of the total —
- * covering both "mark paid" and customer-deposit use cases.
- */
-function PaymentModal({ invoice, onClose, onSaved }: { invoice: SalesInvoice; onClose: () => void; onSaved: () => void }) {
-  const outstanding = Math.round((Number(invoice.total) - Number(invoice.amount_paid)) * 100) / 100;
-  const [fundId, setFundId] = useState("");
-  const [mode, setMode] = useState<"full" | "fixed" | "percent">("full");
-  const [fixed, setFixed] = useState("");
-  const [percent, setPercent] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  const { data: funds } = useQuery({ queryKey: ["funds", "all"], queryFn: () => api.get<FundOption[]>("/funds") });
-  const linked = (funds ?? []).filter((f) => f.gl_account_id);
-
-  const amount = mode === "full" ? outstanding
-    : mode === "fixed" ? Math.round((Number(fixed) || 0) * 100) / 100
-    : Math.round(Number(invoice.total) * (Number(percent) || 0) / 100 * 100) / 100;
-  const amountValid = amount > 0 && amount <= outstanding + 0.0049;
-
-  const pay = useMutation({
-    mutationFn: () => api.post(`/invoices/${invoice.id}/receive-payment`, {
-      fund_id: fundId,
-      amount: mode === "full" ? undefined : String(amount),
-    }),
-    onSuccess: onSaved,
-    onError: (e) => setError(e instanceof ApiError ? e.message : "Payment failed"),
-    meta: { successMessage: "Payment recorded" },
-  });
-
-  return (
-    <Modal title={`Receive payment — ${invoice.invoice_number}`} onClose={onClose} width={480}>
-      <p className="muted" style={{ marginTop: 0 }}>
-        Outstanding balance: <strong>{money(outstanding, invoice.currency)}</strong>
-      </p>
-      <div className="field">
-        <label>Payment type (fund) *</label>
-        <select value={fundId} onChange={(e) => setFundId(e.target.value)}>
-          <option value="">Select a fund…</option>
-          {linked.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-        </select>
-        {linked.length === 0 && (
-          <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-            No funds are linked to a cash/bank account yet. Open <strong>Funds &amp; Advances</strong> and link one first.
-          </div>
-        )}
-      </div>
-      <div className="field">
-        <label>Amount</label>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
-          {(["full", "fixed", "percent"] as const).map((m) => (
-            <label key={m} style={{ display: "flex", gap: 6, alignItems: "center", margin: 0, fontWeight: 400 }}>
-              <input type="radio" style={{ width: "auto" }} checked={mode === m} onChange={() => setMode(m)} />
-              {m === "full" ? "Full balance" : m === "fixed" ? "Fixed amount" : "Percentage of total"}
-            </label>
-          ))}
-        </div>
-        {mode === "fixed" && <input value={fixed} placeholder="0.00" onChange={(e) => setFixed(e.target.value)} />}
-        {mode === "percent" && <input value={percent} placeholder="e.g. 25" onChange={(e) => setPercent(e.target.value)} />}
-      </div>
-      <div className="fx-note">
-        Will record <strong>{money(amount, invoice.currency)}</strong> against the invoice
-        {mode !== "full" && amount > 0 && amount < outstanding ? " (deposit / part payment)." : "."}
-      </div>
-      {error && <div className="error">{error}</div>}
-      <div className="modal-actions">
-        <button onClick={onClose}>Cancel</button>
-        <button className="primary" disabled={!fundId || !amountValid || pay.isPending} onClick={() => pay.mutate()}>
-          {pay.isPending ? "…" : "Record payment"}
-        </button>
-      </div>
     </Modal>
   );
 }

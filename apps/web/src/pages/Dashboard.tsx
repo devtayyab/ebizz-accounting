@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import { useCompany } from "../state/CompanyContext";
 import { money } from "../lib/format";
 import { Icon, type IconName } from "../components/Icon";
+import { ExportButtons } from "../components/ExportButtons";
 
 interface FundBalance { id: string; name: string; balance: number; gl_account_id: string | null }
 interface Activity { type: string; label: string; sub: string; amount: string; currency: string; created_at: string; link?: string }
@@ -53,6 +54,17 @@ export function Dashboard() {
           <h1>Dashboard</h1>
           <p className="page-sub">Overview of {activeCompany?.name ?? "your company"} · all figures in {ccy}</p>
         </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ExportButtons
+            rows={stats}
+            filename="dashboard-summary"
+            title="Dashboard Summary"
+            columns={[
+              { header: "Metric", value: (s) => s.label },
+              { header: "Value", value: (s) => s.value },
+            ]}
+          />
+        </div>
       </div>
 
       <div className="stat-row">
@@ -77,7 +89,21 @@ export function Dashboard() {
 
       <div className="dash-2col">
         <div className="card">
-          <h3 className="card-title">Recent activity</h3>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 className="card-title">Recent activity</h3>
+            <ExportButtons
+              rows={activity.data ?? []}
+              filename="recent-activity"
+              title="Recent Activity"
+              columns={[
+                { header: "Date", value: (a) => a.created_at },
+                { header: "Type", value: (a) => a.sub },
+                { header: "Description", value: (a) => a.label },
+                { header: "Currency", value: (a) => a.currency },
+                { header: "Amount", value: (a) => Number(a.amount) },
+              ]}
+            />
+          </div>
           {activity.isLoading ? <p className="muted">Loading…</p>
             : (activity.data ?? []).length === 0 ? <p className="muted">No activity yet.</p>
             : (
@@ -100,7 +126,18 @@ export function Dashboard() {
             )}
         </div>
         <div className="card">
-          <h3 className="card-title">Logistics funds &amp; balances</h3>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 className="card-title">Logistics funds &amp; balances</h3>
+            <ExportButtons
+              rows={funds.data ?? []}
+              filename="fund-balances"
+              title="Fund Balances"
+              columns={[
+                { header: "Fund", value: (f) => f.name },
+                { header: "Balance", value: (f) => Number(f.balance) },
+              ]}
+            />
+          </div>
           {funds.isLoading ? <p className="muted">Loading…</p>
             : (funds.data ?? []).length === 0 ? <p className="muted">No fund accounts. <Link className="link" to="/funds">Create one →</Link></p>
             : (
