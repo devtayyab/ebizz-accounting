@@ -82,6 +82,9 @@ export function InvoiceTemplate({
   const isPaid = paid !== undefined && paid >= Number(data.total) - 0.005 && Number(data.total) > 0;
   const discount = Number(data.discount ?? 0);
   const shipping = Number(data.shipping ?? 0);
+  // Only surface the Tax column when at least one line actually carries tax.
+  const itemsHaveTax = data.items.some((l) => Number(l.tax) > 0);
+  const servicesHaveTax = data.services.some((l) => Number(l.tax) > 0);
 
   return (
     <div className={`invoice-doc tpl-${template}`} style={{ position: "relative" }}>
@@ -89,19 +92,20 @@ export function InvoiceTemplate({
 
       <header className="inv-top">
         <div className="inv-brand">
+          <div className="inv-company">{c.name}</div>
+          {c.legal && <div className="inv-sub">{c.legal}</div>}
+          <div className="inv-company-contact">
+            {c.address && <div className="inv-sub">{c.address}</div>}
+            {join([c.city, c.country]) && <div className="inv-sub">{join([c.city, c.country])}</div>}
+            {c.phone && <div className="inv-sub">{c.phone}</div>}
+            {c.email && <div className="inv-sub">{c.email}</div>}
+            {c.taxNumber && <div className="inv-sub">Tax ID: {c.taxNumber}</div>}
+          </div>
+        </div>
+        <div className="inv-logo-wrap">
           {c.logo
             ? <img className="inv-logo-img" src={c.logo} alt="logo" />
             : <div className="inv-logo">{c.name.slice(0, 1).toUpperCase()}</div>}
-          <div>
-            <div className="inv-company">{c.name}</div>
-            {c.legal && <div className="inv-sub">{c.legal}</div>}
-          </div>
-        </div>
-        <div className="inv-company-contact">
-          {join([c.address, c.city, c.country]) && <div className="inv-sub">{join([c.address, c.city, c.country])}</div>}
-          {c.phone && <div className="inv-sub">{c.phone}</div>}
-          {c.email && <div className="inv-sub">{c.email}</div>}
-          {c.taxNumber && <div className="inv-sub">Tax ID: {c.taxNumber}</div>}
         </div>
       </header>
 
@@ -135,12 +139,18 @@ export function InvoiceTemplate({
 
       {data.items.length > 0 && (
         <table className="inv-table">
+          <colgroup>
+            <col style={{ width: "24%" }} /><col />
+            <col style={{ width: "13%" }} /><col style={{ width: "9%" }} />
+            {itemsHaveTax && <col style={{ width: "12%" }} />}
+            <col style={{ width: "15%" }} />
+          </colgroup>
           <thead>
             <tr>
               <th>Item</th><th>Description</th>
               <th style={{ textAlign: "right" }}>Unit Price</th>
               <th style={{ textAlign: "right" }}>Quantity</th>
-              <th style={{ textAlign: "right" }}>Tax</th>
+              {itemsHaveTax && <th style={{ textAlign: "right" }}>Tax</th>}
               <th style={{ textAlign: "right" }}>Line Total</th>
             </tr>
           </thead>
@@ -151,7 +161,7 @@ export function InvoiceTemplate({
                 <td className="inv-sub">{l.description || "—"}</td>
                 <td style={{ textAlign: "right" }}>{money(l.price, ccy)}</td>
                 <td style={{ textAlign: "right" }}>{l.qty}</td>
-                <td style={{ textAlign: "right" }}>{money(l.tax, ccy)}</td>
+                {itemsHaveTax && <td style={{ textAlign: "right" }}>{money(l.tax, ccy)}</td>}
                 <td style={{ textAlign: "right" }}>{money(l.amount, ccy)}</td>
               </tr>
             ))}
@@ -161,11 +171,17 @@ export function InvoiceTemplate({
 
       {data.services.length > 0 && (
         <table className="inv-table inv-table-services">
+          <colgroup>
+            <col style={{ width: "24%" }} /><col />
+            <col style={{ width: "15%" }} />
+            {servicesHaveTax && <col style={{ width: "12%" }} />}
+            <col style={{ width: "15%" }} />
+          </colgroup>
           <thead>
             <tr>
               <th>Service</th><th>Description</th>
               <th style={{ textAlign: "right" }}>Cost</th>
-              <th style={{ textAlign: "right" }}>Tax</th>
+              {servicesHaveTax && <th style={{ textAlign: "right" }}>Tax</th>}
               <th style={{ textAlign: "right" }}>Line Total</th>
             </tr>
           </thead>
@@ -175,7 +191,7 @@ export function InvoiceTemplate({
                 <td>{l.name}</td>
                 <td className="inv-sub">{l.description || "—"}</td>
                 <td style={{ textAlign: "right" }}>{money(l.price, ccy)}</td>
-                <td style={{ textAlign: "right" }}>{money(l.tax, ccy)}</td>
+                {servicesHaveTax && <td style={{ textAlign: "right" }}>{money(l.tax, ccy)}</td>}
                 <td style={{ textAlign: "right" }}>{money(l.amount, ccy)}</td>
               </tr>
             ))}

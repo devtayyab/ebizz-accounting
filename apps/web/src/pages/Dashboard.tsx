@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { AgingRow, ProfitAndLoss } from "@ebizz/shared";
@@ -16,9 +16,24 @@ export function Dashboard() {
   const ccy = activeCompany?.base_currency ?? "USD";
   const on = { enabled: !!activeCompanyId };
 
-  const pnl = useQuery({ queryKey: ["reports", "pnl", activeCompanyId], queryFn: () => api.get<ProfitAndLoss>("/reports/profit-loss"), ...on });
-  const ar = useQuery({ queryKey: ["reports", "ar", activeCompanyId], queryFn: () => api.get<AgingRow[]>("/reports/ar-aging"), ...on });
-  const ap = useQuery({ queryKey: ["reports", "ap", activeCompanyId], queryFn: () => api.get<AgingRow[]>("/reports/ap-aging"), ...on });
+  // Date range for the period-based figures (Revenue / Expenses / Net Profit and
+  // A/R, A/P as-of the end date). Empty = all time. Stock value, fund balances
+  // and recent activity are always current positions.
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const rangeQs = (base: string) => {
+    const p = new URLSearchParams();
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    const s = p.toString();
+    return s ? `${base}?${s}` : base;
+  };
+  const asOfQs = (base: string) => (to ? `${base}?as_of=${to}` : base);
+  const periodLabel = from || to ? `${from || "start"} → ${to || "today"}` : "All time";
+
+  const pnl = useQuery({ queryKey: ["reports", "pnl", activeCompanyId, from, to], queryFn: () => api.get<ProfitAndLoss>(rangeQs("/reports/profit-loss")), ...on });
+  const ar = useQuery({ queryKey: ["reports", "ar", activeCompanyId, to], queryFn: () => api.get<AgingRow[]>(asOfQs("/reports/ar-aging")), ...on });
+  const ap = useQuery({ queryKey: ["reports", "ap", activeCompanyId, to], queryFn: () => api.get<AgingRow[]>(asOfQs("/reports/ap-aging")), ...on });
   const valuation = useQuery({ queryKey: ["reports", "valuation", activeCompanyId], queryFn: () => api.get<{ value: string }[]>("/reports/inventory-valuation"), ...on });
   const funds = useQuery({ queryKey: ["funds", activeCompanyId], queryFn: () => api.get<FundBalance[]>("/funds"), ...on });
   const activity = useQuery({ queryKey: ["dashboard", "activity", activeCompanyId], queryFn: () => api.get<Activity[]>("/reports/recent-activity"), ...on });
@@ -38,6 +53,26 @@ export function Dashboard() {
     { label: "Accounts Payable", value: money(apTotal, ccy), icon: "arrowOut", accent: "#0ea5e9" },
   ];
 
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const applyPreset = (p: "all" | "month" | "quarter" | "year") => {
+    const now = new Date();
+    if (p === "all") { setFrom(""); setTo(""); return; }
+    const start = p === "month" ? new Date(now.getFullYear(), now.getMonth(), 1)
+      : p === "quarter" ? new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)
+      : new Date(now.getFullYear(), 0, 1);
+    setFrom(ymd(start)); setTo(ymd(now));
+  };
+  const activePreset = ((): string => {
+    if (!from && !to) return "all";
+    const now = new Date();
+    if (to === ymd(now)) {
+      if (from === ymd(new Date(now.getFullYear(), now.getMonth(), 1))) return "month";
+      if (from === ymd(new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1))) return "quarter";
+      if (from === ymd(new Date(now.getFullYear(), 0, 1))) return "year";
+    }
+    return "custom";
+  })();
+
   const bars = [
     { label: "Revenue", value: revenue, color: "#3557f6" },
     { label: "Expenses", value: expenses, color: "#f59e0b" },
@@ -54,11 +89,11 @@ export function Dashboard() {
           <h1>Dashboard</h1>
           <p className="page-sub">Overview of {activeCompany?.name ?? "your company"} · all figures in {ccy}</p>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <ExportButtons
             rows={stats}
             filename="dashboard-summary"
-            title="Dashboard Summary"
+            title={`Dashboard Summary (${periodLabel})`}
             columns={[
               { header: "Metric", value: (s) => s.label },
               { header: "Value", value: (s) => s.value },
@@ -67,13 +102,31 @@ export function Dashboard() {
         </div>
       </div>
 
+      <div className="card" style={{ marginBottom: 16, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="muted" style={{ fontWeight: 600 }}>Period:</span>
+        <div style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+          {([["all", "All time"], ["month", "This month"], ["quarter", "This quarter"], ["year", "This year"]] as const).map(([k, lbl]) => (
+            <button key={k} className={activePreset === k ? "primary" : ""} onClick={() => applyPreset(k)}>{lbl}</button>
+          ))}
+        </div>
+        <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+          <label className="muted" style={{ margin: 0 }}>From</label>
+          <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+          <label className="muted" style={{ margin: 0 }}>To</label>
+          <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+        </div>
+        <span className="muted" style={{ fontSize: 12.5 }}>
+          Revenue, Expenses, Net Profit &amp; A/R, A/P follow this range. Stock value, fund balances and recent activity are current.
+        </span>
+      </div>
+
       <div className="stat-row">
         {stats.map((s) => <StatCard key={s.label} {...s} />)}
       </div>
 
       <div className="dash-2col">
         <div className="card">
-          <h3 className="card-title">Financial overview <span className="muted" style={{ fontWeight: 500 }}>({ccy})</span></h3>
+          <h3 className="card-title">Financial overview <span className="muted" style={{ fontWeight: 500 }}>({ccy} · {periodLabel})</span></h3>
           <BarChart bars={bars} />
         </div>
         <div className="card qa-card">

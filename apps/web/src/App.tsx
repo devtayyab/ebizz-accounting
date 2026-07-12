@@ -27,6 +27,7 @@ import { FundsPage } from "./pages/Funds";
 import { RecycleBinPage } from "./pages/RecycleBin";
 import { InvoiceView } from "./pages/InvoiceView";
 import { BillView } from "./pages/BillView";
+import { VoucherView } from "./pages/VoucherView";
 
 export function App() {
   const { session, loading, signOut } = useAuth();
@@ -60,6 +61,7 @@ export function App() {
         <Route path="/bills/:id/print" element={<BillView />} />
         <Route path="/debit-notes" element={<DebitNotesPage />} />
         <Route path="/payments" element={<PaymentsPage />} />
+        <Route path="/payments/:id/voucher" element={<VoucherView />} />
         <Route path="/expenses" element={<ExpensesPage />} />
         <Route path="/funds" element={<FundsPage />} />
         <Route path="/items" element={<ItemsPage />} />

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   Account, Customer, Paginated, Payment, PurchaseBill, SalesInvoice, Supplier,
@@ -91,6 +92,7 @@ export function PaymentsPage() {
                   <td className="muted">{p.reference ?? "—"}</td>
                   <td><span className={`badge ${p.reversed ? "off" : "ok"}`}>{p.reversed ? "Reversed" : "Posted"}</span></td>
                   <td style={{ textAlign: "right" }}>
+                    <Link className="link" to={`/payments/${p.id}/voucher`}>{p.party_type === "customer" ? "Receipt" : "Payment"} voucher</Link>
                     {p.reversed ? (
                       <button className="link" onClick={() => ask({ title: "Undo reversal", message: "Restore this payment? It will be re-applied to its invoice/bill.", confirmLabel: "Restore" }).then((ok) => ok && restore.mutate(p.id))}>Undo</button>
                     ) : (
