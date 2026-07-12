@@ -18,7 +18,7 @@ export interface PaymentTarget {
   fxRate: string | number;
 }
 
-interface FundOption { id: string; name: string; gl_account_id: string | null }
+interface FundOption { id: string; name: string; gl_account_id: string | null; balance: number }
 
 /**
  * Record a payment (or advance deposit) against a single invoice or bill.
@@ -52,6 +52,11 @@ export function DocumentPaymentModal({ doc, onClose, onSaved }: {
     : Math.round((Number(doc.total) * (Number(percent) || 0) / 100) * 100) / 100;
   const amountValid = amount > 0 && amount <= outstanding + 0.0049;
   const routeReady = route === "direct" ? !!accountId : !!fundId;
+
+  // Paying a bill OUT of a logistics fund can't exceed that fund's available balance.
+  const selectedFund = linkedFunds.find((f) => f.id === fundId);
+  const guardFund = route === "fund" && !isInvoice && !!selectedFund;
+  const insufficient = guardFund && amount > (selectedFund!.balance ?? 0) + 0.0049;
 
   const pay = useMutation({
     mutationFn: () => {
@@ -109,6 +114,11 @@ export function DocumentPaymentModal({ doc, onClose, onSaved }: {
                 No funds are linked to a cash/bank account yet. Open <strong>Funds &amp; Advances</strong> and link one first.
               </div>
             )}
+            {selectedFund && (
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+                Available balance: <strong>{money(selectedFund.balance ?? 0, doc.currency)}</strong>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -131,10 +141,16 @@ export function DocumentPaymentModal({ doc, onClose, onSaved }: {
         Will record <strong>{money(amount, doc.currency)}</strong> against the {doc.kind}
         {mode !== "full" && amount > 0 && amount < outstanding ? " (deposit / part payment)." : "."}
       </div>
+      {insufficient && (
+        <div className="error">
+          Not enough money in “{selectedFund!.name}”. Available {money(selectedFund!.balance ?? 0, doc.currency)},
+          but this payment needs {money(amount, doc.currency)}.
+        </div>
+      )}
       {error && <div className="error">{error}</div>}
       <div className="modal-actions">
         <button onClick={onClose}>Cancel</button>
-        <button className="primary" disabled={!routeReady || !amountValid || pay.isPending} onClick={() => pay.mutate()}>
+        <button className="primary" disabled={!routeReady || !amountValid || insufficient || pay.isPending} onClick={() => pay.mutate()}>
           {pay.isPending ? "…" : "Record payment"}
         </button>
       </div>

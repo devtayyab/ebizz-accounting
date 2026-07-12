@@ -75,6 +75,24 @@ class PaymentsService {
     return (data ?? []) as Payment[];
   }
 
+  async get(id: string): Promise<Payment & { allocations: { amount: string; document: string | null }[] }> {
+    const { data, error } = await this.db.from("payments").select("*").eq("id", id).maybeSingle();
+    if (error) throw new BadRequestException(pgMessage(error));
+    if (!data) throw new NotFoundException("Payment not found");
+    const { data: allocs, error: aErr } = await this.db
+      .from("payment_allocations")
+      .select("amount, sales_invoices(invoice_number), purchase_bills(bill_number)")
+      .eq("payment_id", id);
+    if (aErr) throw new BadRequestException(pgMessage(aErr));
+    // Supabase embeds a to-one relation as an object or a single-element array.
+    const one = (v: unknown) => (Array.isArray(v) ? v[0] : v) as { invoice_number?: string; bill_number?: string } | null;
+    const allocations = (allocs ?? []).map((a: Record<string, unknown>) => ({
+      amount: a.amount as string,
+      document: one(a.sales_invoices)?.invoice_number ?? one(a.purchase_bills)?.bill_number ?? null,
+    }));
+    return { ...(data as Payment), allocations };
+  }
+
   async create(dto: CreatePaymentDto): Promise<Payment> {
     const { data: paymentId, error } = await this.db.rpc("record_payment", {
       p_company: dto.company_id,
@@ -134,6 +152,11 @@ class PaymentsController {
   @Get()
   list(@CompanyId() companyId: string) {
     return this.svc.list(companyId);
+  }
+
+  @Get(":id")
+  get(@Param("id", ParseUUIDPipe) id: string) {
+    return this.svc.get(id);
   }
 
   @Post()

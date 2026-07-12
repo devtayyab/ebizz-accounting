@@ -72,6 +72,36 @@ export function paymentStatus(
   return { label: "Open", cls: "info" };
 }
 
+/** Spell a monetary amount in words, e.g. 1204.5 → "One thousand two hundred four and 50/100". */
+export function amountInWords(value: string | number): string {
+  const n = Math.abs(Number(value) || 0);
+  const whole = Math.floor(n);
+  const cents = Math.round((n - whole) * 100);
+  const ones = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+  const tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+  const under1000 = (x: number): string => {
+    if (x < 20) return ones[x];
+    if (x < 100) return tens[Math.floor(x / 10)] + (x % 10 ? "-" + ones[x % 10] : "");
+    return ones[Math.floor(x / 100)] + " hundred" + (x % 100 ? " " + under1000(x % 100) : "");
+  };
+  const chunk = (x: number): string => {
+    if (x === 0) return "zero";
+    const scales = ["", " thousand", " million", " billion"];
+    const parts: string[] = [];
+    let i = 0;
+    while (x > 0) {
+      const c = x % 1000;
+      if (c) parts.unshift(under1000(c) + scales[i]);
+      x = Math.floor(x / 1000);
+      i++;
+    }
+    return parts.join(" ");
+  };
+  const words = chunk(whole);
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)} and ${String(cents).padStart(2, "0")}/100`;
+}
+
 /** Stock status from on-hand vs reorder point. */
 export function stockStatus(onHand: number, reorderPoint: number, tracked: boolean): Badge {
   if (!tracked) return { label: "Not tracked", cls: "off" };

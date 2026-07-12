@@ -656,7 +656,8 @@ a.activity-row:hover { background: var(--hover); }
   align-items: flex-start;
   gap: 24px;
 }
-.inv-brand { display: flex; gap: 14px; align-items: flex-start; }
+.inv-brand { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; max-width: 62%; }
+.inv-logo-wrap { flex-shrink: 0; display: flex; align-items: flex-start; margin-left: auto; }
 .inv-logo {
   width: 48px;
   height: 48px;
@@ -671,11 +672,11 @@ a.activity-row:hover { background: var(--hover); }
   flex-shrink: 0;
 }
 .inv-logo-img {
-  height: 56px;
-  max-width: 180px;      /* let wide/wordmark logos keep their aspect ratio */
+  height: 64px;
+  max-width: 220px;      /* let wide/wordmark logos keep their aspect ratio */
   width: auto;
   object-fit: contain;
-  object-position: left center;
+  object-position: right center;
   background: #fff;
   flex-shrink: 0;
 }
@@ -687,7 +688,7 @@ a.activity-row:hover { background: var(--hover); }
 .inv-meta-tbl td { border: none; padding: 2px 0 2px 16px; font-size: 13px; text-align: right; }
 .inv-meta-tbl td:first-child { color: #6b7280; }
 
-.inv-company-contact { text-align: right; font-size: 12.5px; color: #6b7280; }
+.inv-company-contact { text-align: left; font-size: 12.5px; color: #6b7280; margin-top: 6px; max-width: 360px; }
 
 .inv-parties {
   display: flex;
@@ -722,7 +723,7 @@ a.activity-row:hover { background: var(--hover); }
 .inv-metabox-row span:first-child { opacity: 0.8; }
 .inv-metabox-row.total { border-top: 1px solid rgba(255,255,255,0.25); margin-top: 8px; padding-top: 8px; font-size: 14px; }
 
-.inv-table { margin-top: 18px; font-size: 13.5px; }
+.inv-table { margin-top: 18px; font-size: 13.5px; width: 100%; table-layout: fixed; border-collapse: collapse; }
 .inv-table thead th {
   background: var(--inv-accent, #2b5f6b);
   border-bottom: none;
@@ -730,6 +731,8 @@ a.activity-row:hover { background: var(--hover); }
   color: #fff;
   font-weight: 600;
 }
+/* Long unbroken codes (MPN / SKU) must wrap instead of overflowing the row. */
+.inv-table th, .inv-table td { overflow-wrap: anywhere; word-break: break-word; vertical-align: top; }
 .inv-table tbody td { padding: 10px 12px; border-bottom: 1px solid #eef2f7; }
 .inv-table tbody tr:hover { background: transparent; }
 .inv-table tbody tr:nth-child(even) { background: #f8fafc; }
@@ -788,6 +791,40 @@ a.activity-row:hover { background: var(--hover); }
 
 .inv-top { border-bottom: 2px solid #eef2f7; padding-bottom: 18px; }
 .inv-logo { background: var(--inv-accent, #2b5f6b); }
+
+/* ===== payment / receipt voucher ===== */
+.voucher-doc { max-width: 820px; margin: 0 auto; }
+.vou-titlebar {
+  display: flex; justify-content: space-between; align-items: center;
+  margin: 24px 0 8px;
+}
+.vou-title {
+  margin: 0; font-size: 22px; letter-spacing: 0.12em; font-weight: 800;
+  color: var(--inv-accent, #2b5f6b);
+}
+.vou-meta { display: flex; gap: 24px; }
+.vou-meta > div { display: flex; flex-direction: column; text-align: right; }
+.vou-meta span { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; }
+.vou-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px;
+  margin: 18px 0; padding: 16px; background: #f8fafc; border-radius: 10px;
+}
+.vou-value { font-weight: 600; margin-top: 2px; }
+.vou-amount {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--inv-accent, #2b5f6b); color: #fff;
+  border-radius: 10px; padding: 16px 20px; margin-top: 4px;
+}
+.vou-amount-words { font-size: 14px; font-weight: 600; margin-top: 4px; max-width: 460px; }
+.vou-amount-big { font-size: 26px; font-weight: 800; }
+.vou-being { margin-top: 18px; font-size: 13px; color: #374151; }
+.vou-being .inv-label { display: inline; margin-right: 6px; }
+.vou-signs {
+  display: flex; justify-content: space-between; gap: 60px;
+  margin-top: 56px; font-size: 12.5px; color: #6b7280;
+}
+.vou-signs > div { flex: 1; text-align: center; }
+.vou-signline { border-top: 1px solid #94a3b8; margin-bottom: 6px; }
 
 @media print {
   .sidebar, .sidebar-toggle, .sidebar-backdrop, .topbar, .no-print { display: none !important; }

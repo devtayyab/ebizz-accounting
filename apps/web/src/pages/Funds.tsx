@@ -67,6 +67,17 @@ export function FundsPage() {
       : t.entry_type === "adjustment" ? base : Math.abs(base);
   };
 
+  // Running available balance after each transaction. txs are newest-first, so
+  // accumulate oldest-first and key the result by id.
+  const balanceById = new Map<string, number>();
+  {
+    let run = 0;
+    for (const t of [...(txs ?? [])].reverse()) {
+      run += effect(t);
+      balanceById.set(t.id, Math.round((run + Number.EPSILON) * 100) / 100);
+    }
+  }
+
   return (
     <div>
       <div className="page-head">
@@ -130,13 +141,14 @@ export function FundsPage() {
                   { header: "Reference", value: (t) => t.reference ?? "" },
                   { header: "Memo", value: (t) => t.memo ?? "" },
                   { header: "Effect", value: (t) => effect(t) },
+                  { header: "Available balance", value: (t) => balanceById.get(t.id) ?? 0 },
                 ]}
               />
               <button className="primary" onClick={() => setTxModal({ fund: selected, tx: null })}>+ Add transaction</button>
             </div>
           </div>
           <table>
-            <thead><tr><th>Date</th><th>Type</th><th>Party</th><th>Reference</th><th>Memo</th><th style={{ textAlign: "right" }}>Effect</th><th /></tr></thead>
+            <thead><tr><th>Date</th><th>Type</th><th>Party</th><th>Reference</th><th>Memo</th><th style={{ textAlign: "right" }}>Effect</th><th style={{ textAlign: "right" }}>Available balance</th><th /></tr></thead>
             <tbody>
               {(txs ?? []).map((t) => (
                 <tr key={t.id}>
@@ -148,13 +160,16 @@ export function FundsPage() {
                   <td style={{ textAlign: "right", color: effect(t) < 0 ? "var(--danger)" : "var(--success)" }}>
                     {effect(t) >= 0 ? "+" : ""}{money(effect(t), ccy)}
                   </td>
+                  <td style={{ textAlign: "right", fontWeight: 600, color: (balanceById.get(t.id) ?? 0) < 0 ? "var(--danger)" : "inherit" }}>
+                    {money(balanceById.get(t.id) ?? 0, ccy)}
+                  </td>
                   <td style={{ textAlign: "right" }}>
                     <button className="link" onClick={() => setTxModal({ fund: selected, tx: t })}>Edit</button>
                     <button className="link danger" onClick={() => ask({ title: "Delete transaction", message: "Delete this fund transaction?", confirmLabel: "Delete", danger: true }).then((ok) => ok && removeTx.mutate(t.id))}>Delete</button>
                   </td>
                 </tr>
               ))}
-              {txs?.length === 0 && <tr><td colSpan={7}><EmptyCell>No transactions yet.</EmptyCell></td></tr>}
+              {txs?.length === 0 && <tr><td colSpan={8}><EmptyCell>No transactions yet.</EmptyCell></td></tr>}
             </tbody>
           </table>
         </div>
